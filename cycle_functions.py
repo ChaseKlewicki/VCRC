@@ -101,7 +101,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         Nf = 19 / 0.0254
 
         # Outside diameter of tubing (m) [measured .31"]
-        do = 0.31 *.0254
+        do = 0.3125 *.0254
 
         # Inside diameter of tubing (m) [wall thickness estimated at 0.03"]
         di = do - 2 * 0.03 *.0254
@@ -113,15 +113,15 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         xl = (0.994 * 0.0254) / 2
 
         # Fin thickness (m) [measured 0.004"]
-        delta = 0.006 * 0.0254
+        delta = 0.004 * 0.0254
 
-        # Overall Length (m) [measured 15 15/16"]
+        # Overall Length (m) 
         L1 = (12.5) * 0.0254
         
         # Overall depth (m) [measured 1 1/2"]
         L2 = (1.5) * 0.0254
 
-        # Overall height (m) [measured 12.5"]
+        # Overall height (m) 
         L3 = 8.5 * 0.0254
         
         # Number of Rows 
@@ -257,7 +257,6 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         
         #Overall Fin efficiency
         fin_eff = 1 - (1 - eta_f) * A_f / A_a
-        fin_eff = 0.9
 #         print(j)
 #         print(h_a)
 #         print(A_a)
@@ -268,7 +267,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         #HT-coefficient, gaseous, contribution from refrigerant side
         Re_g  =  4 * m_dot_g / (np.pi * di * mu_g)
         Pr_g  =  c_p_g * mu_g / k_g
-        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'c')  #Needs considerations for boiling
+        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'c')  
         h_i_g =  k_g * Nu_g / di
 
 
@@ -295,7 +294,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         Nf = 19 / 0.0254
 
         # Outside diameter of tubing (m) [measured .21"]
-        do = 0.25 * 0.0254
+        do = 0.21 * 0.0254
 
         # Inside diameter of tubing (m) [wall thickness estimated at 0.03"]
         di = do - 2 * 0.03 *.0254
@@ -306,8 +305,8 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Longitudinal spacing between tubes (m) [(measured 1.066" - do) / 2]
         xl = (1.066 * 0.0254 - do) / 2
 
-        # Fin thickness (m) [measured 0.006"]
-        delta = 0.003 * 0.0254
+        # Fin thickness (m) [measured 0.004"]
+        delta = 0.004 * 0.0254
 
         # Overall Length (m) [measured 15 15/16"]
         L1 = (15 + 15/16) * 0.0254
@@ -452,7 +451,6 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         
         #Overall Fin efficiency
         fin_eff = 1 - (1 - eta_f) * A_f / A_a
-#         fin_eff = 0.65
         
         
 #         print(j)
@@ -730,10 +728,10 @@ def valve_func( CA_param, P_up, P_down, x):
 def capillary_tube_func(P_in, h_in, T_in):
     
     # inner diameter of capillary tube
-    D_c = (1/32 + .00475) * .0254 # [m] # 1/16 in OD copper tubing
+    D_c = (1/32 -0.004) * .0254 # [m] # 1/16 in OD copper tubing
     
-    # length of capillary tube. 2 in diameter coil, 4 loops, 2 tubes.
-    L_c = 2 * .0254 * np.pi * 2 * 4
+    # length of capillary tube. 4 in diameter coil, 4 loops, 2 tubes.
+    L_c = 2 * .0254 * np.pi * 2 * 5
     
     # Dynamic viscosity of r-410a fluid at inlet temperature
     mu_f = CP.PropsSI('V', 'T', T_in, 'Q', 0, 'R410a')
@@ -808,7 +806,7 @@ def Evap_Proc(input_state, flowrate, T_pod):
 
 
     # Artificial Input
-    airspeed = 0.2  #[m/s]
+    airspeed = 0.2 #[m/s]
 
     #
     # Initialize Vars

@@ -76,8 +76,8 @@ def make_cycle(Vars, Inputs, Param):
     m_dot_v = capillary_tube_func(P_c, h[4], T[4])
     
     P[5] = P_e
-    # Enthalpy gain due to capillary tubes
-    h[5] = 1.45 * h[4]
+    # Isenthalpic expansion
+    h[5] =  h[4]
     
     STATE = [ P[5], h[5]]
     
