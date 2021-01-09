@@ -726,75 +726,83 @@ def valve_func( CA_param, P_up, P_down, x):
 
 
 def capillary_tube_func(P_in, h_in, T_in):
+# D.A. Wolf, R.R. Bittle, M.B. Pate, Adiabatic capillary tube 
+# performance with alternative refrigerants, 
+# ASHRAE final report No. RP-762, 1995.
+
+    # 1/16" in OD copper tubing, .02" wall thickness
+    D_c = (1/16 - 0.02 * 2) * 0.0254 
     
-    # inner diameter of capillary tube
-    D_c = (1/32 -0.004) * .0254 # [m] # 1/16 in OD copper tubing
-    
-    # length of capillary tube. 4 in diameter coil, 4 loops, 2 tubes.
-    L_c = 2 * .0254 * np.pi * 2 * 5
-    
+    # length of capillary tube.  in diameter coil, 4 loops, 2 tubes.
+    L_c = 3 * 0.0254 * np.pi  * 4 * 2
+
+    # delta subcool
+    T_SC = CP.PropsSI('T', 'P', P_in, 'Q', 0, 'R410a') - T_in
+
     # Dynamic viscosity of r-410a fluid at inlet temperature
     mu_f = CP.PropsSI('V', 'T', T_in, 'Q', 0, 'R410a')
-    
+
     # Dynamic viscosity of r-410a vapor at inlet temperature
     mu_g = CP.PropsSI('V', 'T', T_in, 'Q', 1, 'R410a')
-    
+
     # Density of r-410a fluid at inlet temperature
     rho_f = CP.PropsSI('D', 'T', T_in, 'Q', 0, 'R410a')
-    
+
     # Density of r-410a vapor at inlet temperature
     rho_g = CP.PropsSI('D', 'T', T_in, 'Q', 1, 'R410a')
-    
+
     # Specific volume of r-410a fluid at inlet temperature
     v_f = 1 / rho_f
-    
+
     # Specific volume of r-410a vapor at inlet temperature
     v_g = 1 / rho_g
-    
+
     # Saturated liquid surface tension of r-410a vapor at inlet temperature
     sigma = CP.PropsSI('I', 'T', T_in, 'Q', 0, 'R410a')
-    
+
     # Enthalpy of vaporization at inlet temperature
     h_fgc = (CP.PropsSI('H', 'T', T_in, 'Q', 1, 'R410a') - 
              CP.PropsSI('H', 'T', T_in, 'Q', 0, 'R410a'))
-    
+
     # Enthalpy of fluid at inlet pressure
     h_f = CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a')
-    
+
     # Enthalpy of vaporization at inlet pressure
     h_fg = (CP.PropsSI('H', 'P', P_in, 'Q', 1, 'R410a') - 
              CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a'))
     
+    C_pfc = CP.PropsSI('C', 'P', P_in, 'Q', 0, 'R410a')
+
     # A generalized continuous empirical correlation for predicting refrigerant
     # mass flow rates through adiabatic capillary tubes
-    
+
     pi_1 = L_c / D_c
     pi_2 = D_c **2 * h_fgc / v_f**2 / mu_f**2
-    pi_3 = D_c * sigma / v_f / mu_f**2
     pi_4 = D_c**2 * P_in /  v_f / mu_f**2
-    pi_5 = 1 + (h_in - h_f) / h_fg
+    if h_in > h_f:
+        pi_5 = (h_in - h_f) / h_fg
+    else:    
+        pi_5 = pi_2 = D_c **2 * C_pfc * T_SC / v_f**2 / mu_f**2
     pi_6 = v_g / v_f 
     pi_7 = (mu_f - mu_g) / mu_g
-    
+
     # Check if it is subcooled or mixture
     # mixture
     if h_in > h_f:
-        c_5 = 0.6436 # two-hase
+        # two-phase
+        pi_8 = 187.27 * (pi_1**-0.635 * pi_2**-0.189 * pi_4**0.645 * 
+                         pi_5**-0.163 * pi_6**-0.213 * pi_7**-0.487)
+
+    else: # subcooled
+        pi_8 = 1.8925 * (pi_1**-0.484 * pi_2**-0.824 * pi_4**1.369 * 
+                         pi_5**0.0187 * pi_6**0.773 * pi_7**0.265)
         
-    # vapor quality = 0
-    else:
-        c_5 = -1.971 # subcooled
-    
-    pi_8 = 150.26 * pi_1**-0.5708 * pi_2**-1.4636 * pi_4**1.953 * pi_5**c_5 * pi_6**1.4181
-    
-    if pi_5 < 0:
-        pi_8 = 0
 
     
     m_dot = pi_8 * D_c * mu_f
     
 
-    return  m_dot
+    return m_dot 
 
 
 def Evap_Proc(input_state, flowrate, T_pod):
@@ -806,7 +814,7 @@ def Evap_Proc(input_state, flowrate, T_pod):
 
 
     # Artificial Input
-    airspeed = 0.2 #[m/s]
+    airspeed = 3.2/3 #[m/s]
 
     #
     # Initialize Vars
