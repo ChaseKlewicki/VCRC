@@ -23,22 +23,27 @@ def SuperHT_Cp_integral(T1, T2):
     return float(deltaH * 1000)
 
 
-def compr_func( inlet_state, RPM ):
+def compr_func( inlet_state, RPM, P_ratio):
 
     P_e   = inlet_state[0] # Pa
     h_e_o = inlet_state[1] # j/kg
+        
 
     #Param
-    r_c = 2.4        # Compression Ratio
+    eta_v = 1 -  0.225 * P_ratio        # Compression Ratio
     Disp = 5.25E-6    #[m^3 per rev] #volume displacement
 
     h_g   = CP.PropsSI('H', 'P', P_e, 'Q', 1, 'R410a')
     if h_e_o < h_g:
         warnings.warn('Flooded Compressor, vapor quality < 1')
     
-    rho_c = CP.PropsSI('D', 'P', P_e, 'H' ,h_e_o, 'R410a')
+    rho = CP.PropsSI('D', 'P', P_e, 'H' ,h_e_o, 'R410a')
 
-    m_dot = RPM / 60 * Disp * r_c * rho_c
+    m_dot = RPM / 60 * Disp * eta_v * rho
+    
+    if P_ratio > 4:
+        m_dot = 0
+        warnings.warn('Compression ratio very high')
 
     return m_dot
 
@@ -98,10 +103,10 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Geometric Characteristics
         
         # Fin density (fins/m) [measured 19 fins per inch]
-        Nf = 19 / 0.0254
+        Nf = 15 / 0.0254
 
         # Outside diameter of tubing (m) [measured .31"]
-        do = 0.3125 *.0254
+        do = 0.31 *.0254
 
         # Inside diameter of tubing (m) [wall thickness estimated at 0.03"]
         di = do - 2 * 0.03 *.0254
@@ -215,7 +220,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         G_a = A_fr_a * V_extr * rho_a / A_o_a
 
         # Compute Reynold's number
-        Re_air = G_a * D_h_a / mu_a
+        Re_a = G_a * D_h_a / mu_a
 
         # Compute j using equation 7.141 Nr >= 2 (Fundamentals of Heat Exchanger Design-Shah pg 551)
 
@@ -245,6 +250,10 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
 
         # h = JGCp/Pr^2/3
         h_a = j * G_a * c_p_a / Pr_a**(2/3)
+        
+#         Nu_a  =  Circular_Duct_Nu([Re_a], [Pr_a], 'c')
+        
+#         h_a = Nu_a * k_a / D_h_a
 
         # Single fin efficiency 
         # (Fundamentals of Heat Exchanger Design-Shah pg 606 eqn 9.14)
@@ -257,6 +266,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         
         #Overall Fin efficiency
         fin_eff = 1 - (1 - eta_f) * A_f / A_a
+
 #         print(j)
 #         print(h_a)
 #         print(A_a)
@@ -267,14 +277,14 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         #HT-coefficient, gaseous, contribution from refrigerant side
         Re_g  =  4 * m_dot_g / (np.pi * di * mu_g)
         Pr_g  =  c_p_g * mu_g / k_g
-        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'c')  
+        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'h')  
         h_i_g =  k_g * Nu_g / di
 
 
         #HT-coefficient, liquid, contribution from refrigerant side
         Re_f  =  4 * m_dot_f / (np.pi * di * mu_f)
         Pr_f  =  c_p_f * mu_f / k_f
-        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'c')  
+        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'h')  
         h_i_f =  k_f * Nu_f / di
 
 
@@ -291,7 +301,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Geometric Characteristics
         
         # Fin density (fins/m) [measured 15 fins per inch]
-        Nf = 19 / 0.0254
+        Nf = 15 / 0.0254
 
         # Outside diameter of tubing (m) [measured .21"]
         do = 0.21 * 0.0254
@@ -321,7 +331,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         Nr = 3
         
         # Number of tubes
-        Nt = 44
+        Nt = 44 - 2
 
 
         #Interior (refrigerant side)
@@ -409,7 +419,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         G_a = A_fr_a * V_extr * rho_a / A_o_a
 
         # Compute Reynold's number
-        Re_air = G_a * D_h_a / mu_a
+        Re_a = G_a * D_h_a / mu_a
 
         # Compute j using equation 7.141 Nr >= 2 (Fundamentals of Heat Exchanger Design-Shah pg 551)
 
@@ -439,6 +449,10 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
 
         # h = JGCp/Pr^2/3
         h_a = j * G_a * c_p_a / Pr_a ** (2/3)
+        
+#         Nu_a  =  Circular_Duct_Nu([Re_a], [Pr_a], 'h')
+        
+#         h_a = Nu_a * k_a / D_h_a
 
         # Single fin efficiency 
         # (Fundamentals of Heat Exchanger Design-Shah pg 606 eqn 9.14)
@@ -452,7 +466,6 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         #Overall Fin efficiency
         fin_eff = 1 - (1 - eta_f) * A_f / A_a
         
-        
 #         print(j)
 #         print(h_a)
 #         print(A_a)
@@ -463,14 +476,14 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         #HT-coefficient, gaseous, contribution from refrigerant side
         Re_g  =  4 * m_dot_g / (np.pi * di * mu_g)
         Pr_g  =  c_p_g * mu_g / k_g
-        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'h')  
+        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'c')  
         h_i_g =  k_g * Nu_g / di
 
 
         #HT-coefficient, liquid, contribution from refrigerant side
         Re_f  =  4 * m_dot_f / (np.pi * di * mu_f)
         Pr_f  =  c_p_f * mu_f / k_f
-        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'h')  
+        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'c')  
         h_i_f =  k_f * Nu_f / di
 
 
@@ -490,22 +503,14 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
     return [UA_g, UA_f]
 
 
-def Condenser_Proc(input_state, strarg, flowrate, T_amb):
+def Condenser_Proc(input_state, strarg, flowrate, T_amb, airspeed):
 
 
     # Input state must be a row vector containing pressure 
     # and enthalpy in that order
     # input_state = [P, h]
 
-    # Input state could be a row vector containing pressure 
-    # and temperature in that order
-    # input_state = [P, T]
-
-
-    #Artificial Inpu
-    airspeed = 5.2
-
-
+    airspeed = 0.2 * airspeed
     #Initialize Vars
     #----------------------
     P_in = input_state[0]
@@ -726,16 +731,14 @@ def valve_func( CA_param, P_up, P_down, x):
 
 
 def capillary_tube_func(P_in, h_in, T_in):
-# D.A. Wolf, R.R. Bittle, M.B. Pate, Adiabatic capillary tube 
-# performance with alternative refrigerants, 
-# ASHRAE final report No. RP-762, 1995.
-
+    d_coil = 2 * 0.0254
+    
     # 1/16" in OD copper tubing, .02" wall thickness
-    D_c = (1/16 - 0.02 * 2) * 0.0254 
+    D_c = 1/32 * 0.0254
     
     # length of capillary tube.  in diameter coil, 4 loops, 2 tubes.
-    L_c = 3 * 0.0254 * np.pi  * 4 * 2
-
+    L_c = d_coil * np.pi  * 3
+    
     # delta subcool
     T_SC = CP.PropsSI('T', 'P', P_in, 'Q', 0, 'R410a') - T_in
 
@@ -743,13 +746,19 @@ def capillary_tube_func(P_in, h_in, T_in):
     mu_f = CP.PropsSI('V', 'T', T_in, 'Q', 0, 'R410a')
 
     # Dynamic viscosity of r-410a vapor at inlet temperature
-    mu_g = CP.PropsSI('V', 'T', T_in, 'Q', 1, 'R410a')
+    mu_g = CP.PropsSI('V', 'P', P_in, 'Q', 1, 'R410a')
 
     # Density of r-410a fluid at inlet temperature
-    rho_f = CP.PropsSI('D', 'T', T_in, 'Q', 0, 'R410a')
+    rho_f = CP.PropsSI('D', 'P', P_in, 'Q', 0, 'R410a')
 
     # Density of r-410a vapor at inlet temperature
-    rho_g = CP.PropsSI('D', 'T', T_in, 'Q', 1, 'R410a')
+    rho_g = CP.PropsSI('D', 'P', P_in, 'Q', 1, 'R410a')
+    
+    # kinematic viscosity of r-410a fluid at inlet temperature
+    nu_f = mu_f / rho_f
+
+    # kinematic viscosity of r-410a vapor at inlet temperature
+    nu_g = mu_g / rho_g
 
     # Specific volume of r-410a fluid at inlet temperature
     v_f = 1 / rho_f
@@ -758,50 +767,39 @@ def capillary_tube_func(P_in, h_in, T_in):
     v_g = 1 / rho_g
 
     # Saturated liquid surface tension of r-410a vapor at inlet temperature
-    sigma = CP.PropsSI('I', 'T', T_in, 'Q', 0, 'R410a')
+    sigma = CP.PropsSI('I', 'P', P_in, 'Q', 0, 'R410a')
 
     # Enthalpy of vaporization at inlet temperature
     h_fgc = (CP.PropsSI('H', 'T', T_in, 'Q', 1, 'R410a') - 
              CP.PropsSI('H', 'T', T_in, 'Q', 0, 'R410a'))
 
     # Enthalpy of fluid at inlet pressure
-    h_f = CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a')
+    h_f = CP.PropsSI('H', 'T', T_in, 'Q', 0, 'R410a')
 
     # Enthalpy of vaporization at inlet pressure
     h_fg = (CP.PropsSI('H', 'P', P_in, 'Q', 1, 'R410a') - 
              CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a'))
     
-    C_pfc = CP.PropsSI('C', 'P', P_in, 'Q', 0, 'R410a')
+    C_pf = CP.PropsSI('C', 'T', T_in, 'Q', 0, 'R410a')
 
     # A generalized continuous empirical correlation for predicting refrigerant
     # mass flow rates through adiabatic capillary tubes
 
-    pi_1 = L_c / D_c
-    pi_2 = D_c **2 * h_fgc / v_f**2 / mu_f**2
-    pi_4 = D_c**2 * P_in /  v_f / mu_f**2
-    if h_in > h_f:
-        pi_5 = (h_in - h_f) / h_fg
-    else:    
-        pi_5 = pi_2 = D_c **2 * C_pfc * T_SC / v_f**2 / mu_f**2
-    pi_6 = v_g / v_f 
-    pi_7 = (mu_f - mu_g) / mu_g
-
-    # Check if it is subcooled or mixture
-    # mixture
-    if h_in > h_f:
-        # two-phase
-        pi_8 = 187.27 * (pi_1**-0.635 * pi_2**-0.189 * pi_4**0.645 * 
-                         pi_5**-0.163 * pi_6**-0.213 * pi_7**-0.487)
-
-    else: # subcooled
-        pi_8 = 1.8925 * (pi_1**-0.484 * pi_2**-0.824 * pi_4**1.369 * 
-                         pi_5**0.0187 * pi_6**0.773 * pi_7**0.265)
-        
-
+    pi_1 = D_c**2 * P_in /  v_f / mu_f**2
+    pi_2 = L_c / D_c
+    pi_3 = D_c**2 * C_pf * T_SC /  v_f**2 / mu_f**2
+    pi_4 = D_c**2 * h_fgc /  v_f**2 / mu_f**2
+    pi_5 = sigma * D_c /  v_f / mu_f**2
+    pi_6 = d_coil / D_c
     
-    m_dot = pi_8 * D_c * mu_f
+    if T_SC <= 0:
+        m_dot =0
+    else:
+        pi_7 = (1.5104 * pi_1**0.5351 * pi_2**-0.3785 * pi_3**0.1074 * 
+            pi_4**-0.1596 * pi_5**0.0962 * 0.7887 * pi_6**0.0424)
     
-
+        m_dot = D_c * mu_f * pi_7
+    
     return m_dot 
 
 
@@ -814,7 +812,7 @@ def Evap_Proc(input_state, flowrate, T_pod):
 
 
     # Artificial Input
-    airspeed = 3.2/3 #[m/s]
+    airspeed = 0.5 #[m/s]
 
     #
     # Initialize Vars
@@ -859,7 +857,6 @@ def Evap_Proc(input_state, flowrate, T_pod):
 
     rho_g   = CP.PropsSI('D', 'P', P_in, 'Q', 1, 'R410a')
     rho_f   = CP.PropsSI('D', 'P', P_in, 'Q', 0, 'R410a')
-    #rho_fg  = rho_f - rho_g; or rho_g - rho_f?
     rho_rat = rho_g / rho_f
 
 

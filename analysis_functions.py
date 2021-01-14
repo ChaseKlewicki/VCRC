@@ -103,7 +103,7 @@ def experimental_analysis(file, P_amb, Input_Q):
     k_eff = 4.91
     
     # length of prototype (m)
-    L = 65 * 0.0254
+    L = 65 * 0.0254 / 2
     
     # Free stream velocity (m/s)
     U = windSpeed
@@ -118,36 +118,43 @@ def experimental_analysis(file, P_amb, Input_Q):
     Pr = CP.PropsSI('Prandtl', 'T', T_amb, 'P', P_amb, 'Air.mix')
     
     # Reynolds number outside 
-    Re = rho * U * r_o / mu
+    Re = rho * U * L / mu
     
     # Temperature difference between ambient and pod (K)
     delta_T = (T_mean_pod + 273.15 - T_amb)
     
-    # Dittus Beolter correlation
-    if delta_T > 0:
-        Nu = 0.023* Re**0.8 * Pr**0.3
+    # Incropera, Frank P.; DeWitt, David P. (2007). 
+    # Fundamentals of Heat and Mass Transfer (6th ed.). 
+    # Hoboken: Wiley. pp. 490, 515. ISBN 978-0-471-45728-2.
+    if Re < 5e5:
+        Nu = 0.664 * Re**0.5 * Pr**(1/3)
     else:
-        Nu = 0.023* Re**0.8 * Pr**0.4
-    
+        raise ValueError('Re is turbulent')
     # Conductivity of air
     k_air  = CP.PropsSI('L', 'T', T_amb, 'P', P_amb, 'Air.mix')
     
     # convection coefficient
     h_air = Nu * k_air / L
     
-    # ambient heat load (W)
-    ambient_Q = (T_mean_pod + 273.15 - T_amb)/(r_i**2 * ( 1 / 6 / k_eff + np.log(r_o/r_i) / 2 / k_ply +  1 / 2 / r_o / h_air))
+    # Ambient heat load (W)
+    ambient_Q = (T_mean_pod + 273.15 - T_amb) / (r_i**2 * ( 1 / 6 / k_eff + np.log(r_o/r_i) / 2 / k_ply +  1 / 2 / r_o / h_air))
+    
+    # Compute VCRC heat load 
+    load = (Input_Q - ambient_Q)
     
     # Creae pandas dataframe for 
-    experimentalData = pd.DataFrame({'Ambient P (Pa)': P_amb, 'Ambient T (K)': T_amb, 'P (Pa)': [pressures], 'T (K)': [temperatures], 'h (j/kg)':[cycleEnthalpy], 
-                                     's (j/kg K)': [cycleEntropy], 'Pod T Profile (K)': [radialProfile.values], 'Pod T (K)': [T_mean_pod + 273.15],
-                                     'Wind Tunnel Velocity (m/s)': windSpeed, 'Heating Element Power (W)': Input_Q, 'file': file, 'Ambient Heat Load (W)': ambient_Q})
+    experimentalData = pd.DataFrame({'Ambient P (Pa)': P_amb, 'Ambient T (K)': T_amb, 'P (Pa)': [pressures], 
+                                     'T (K)': [temperatures], 'h (j/kg)':[cycleEnthalpy], 
+                                     's (j/kg K)': [cycleEntropy], 'Pod T Profile (K)': [radialProfile.values], 
+                                     'Pod T (K)': [T_mean_pod + 273.15], 'Wind Tunnel Velocity (m/s)': windSpeed, 
+                                     'Heating Element Power (W)': Input_Q, 'Ambient Heat Load (W)': ambient_Q, 
+                                     'Total Heat Load (W)': load, 'file': file,})
 
     
 
     return experimentalData
 
-def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False):
+def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False, color = ""):
     # A function which plots the T-s and P-h diagram of the experimental 
     # measurements of the VCRC and model of the VCRC. If only one arguement is given
     # the function assumes experimental data and plots T-s and P-h numbered points.
@@ -175,7 +182,7 @@ def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod 
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
         plt.subplot(121)
         plt.plot(vaporDomeS, vaporDomeT, '-')
-        plt.plot(model['s (j/kg K)'], model['T (K)'], '-o')
+        plt.plot(model['s (j/kg K)'], model['T (K)'], color + '-o')
         plt.plot(exp['s (j/kg K)'], exp['T (K)'], 'go')
         if annotate == True:
             for ind, s in enumerate(exp['s (j/kg K)']):
@@ -193,7 +200,7 @@ def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod 
 
         plt.subplot(122)
         plt.plot(vaporDomeH, vaporDomeP, '-')
-        plt.plot(model['h (j/kg)'], model['P (Pa)'], '-o')
+        plt.plot(model['h (j/kg)'], model['P (Pa)'], color + '-o')
         plt.plot(exp['h (j/kg)'], exp['P (Pa)'], 'go')
         if annotate == True:
             for ind, h in enumerate(exp['h (j/kg)']):

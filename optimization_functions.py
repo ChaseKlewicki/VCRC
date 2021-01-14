@@ -18,6 +18,7 @@ def make_cycle(Vars, Inputs, Param):
     Q_load = Inputs[0] # W
     T_amb  = Inputs[1] # K
     T_pod  = Inputs[2] # K
+    U_cond = Inputs[3] # m/s
     
     #----------------------------------------------#
     #==------ Param -------==#
@@ -42,54 +43,63 @@ def make_cycle(Vars, Inputs, Param):
     # Calculate
     #=========================================================================#
 
+    # pressure drop accross evaporator (Pa)
+    delta_P_e = 5e4
+    
+    # pressure drop accross condenser (Pa)
+    delta_P_c = 5e4
+    
     # Init state
-    T_sat_e = CP.PropsSI('T', 'P', P_e, 'Q', 1, 'R410a') # K
-    h_g     = CP.PropsSI('H', 'P', P_e, 'Q', 1, 'R410a') # J/kg
+    T_sat_e = CP.PropsSI('T', 'P', P_e - delta_P_e, 'Q', 1, 'R410a') # K
+    h_g     = CP.PropsSI('H', 'P', P_e - delta_P_e, 'Q', 1, 'R410a') # J/kg
     
     
-    P[0] = P_e - 5e4 # Pressure drop accross evap determined empirically
+    P[0] = P_e - delta_P_e # Pressure drop accross evap determined empirically
     T[0] = T_sat_e + T_SH
-#     h[0] = h_g + SuperHT_Cp_integral( T_sat_e, T[0])
     h[0] = CP.PropsSI('H', 'P', P[0], 'T', T[0], 'R410a')
     abscissa[0] = 0
-    s[0] = CP.PropsSI('S', 'P', P_e, 'H', h[0], 'R410a')
+    s[0] = CP.PropsSI('S', 'P', P[0], 'H', h[0], 'R410a')
     
     STATE   = [P[0], h[0]]
     
     #   calculate compressor
-    m_dot_s = compr_func( STATE, RPM )
+    m_dot_s = compr_func( STATE, RPM, P_c / P[0] )
     
     P[1] = P_c
-    s[1] = s[0] - 0.8 * (s[0] - CP.PropsSI('S', 'P', P_c, 'Q', 1, 'R410a'))
-    h[1] = CP.PropsSI('H', 'P', P_c, 'S', s[1], 'R410a')
+    
+    # Isentropic Ratio
+    eta_is = 3
+   
+    h[1] = h[0] + (CP.PropsSI('H', 'P', P_c, 'S', s[0], 'R410a') - h[0]) / eta_is
+    s[1] = CP.PropsSI('S', 'P', P[1], 'H', h[1], 'R410a')
 
     STATE = [P[1], h[1]]
     
     
     #   calculate condenser
     [P[1:5], T[1:5], h[1:5], s[1:5], abscissa[1:5]] = Condenser_Proc( STATE, 
-                                                             'h', m_dot_s, T_amb)
+                                                             'h', m_dot_s, T_amb, U_cond)
 
 
     #   calculate expansion
 #     m_dot_v = valve_func( CA, P_c, P_e, valve )
-    m_dot_v = capillary_tube_func(P_c, h[4], T[4])
+    m_dot_v = capillary_tube_func(P[4], h[4], T[4])
     
     P[5] = P_e
     # Isenthalpic expansion
     h[5] =  h[4]
     
-    STATE = [ P[5], h[5]]
+    STATE = [P[5], h[5]]
     
 
     #   calculate evap
-    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9]] = Evap_Proc(STATE, m_dot_v, T_pod)
+    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9]] = Evap_Proc(STATE, m_dot_s, T_pod)
 
     abscissa[5:9] = abscissa[5:9] + abscissa[4]
 
     # Energy and Mass Deficits
-    Q_evap = m_dot_v * (h[8] - h[5])
-    Q_absr = m_dot_v * (h[0] - h[5])
+    Q_evap = m_dot_s * (h[8] - h[5])
+    Q_absr = m_dot_s * (h[0] - h[5])
 
     m_def  =  (m_dot_s - m_dot_v) / m_dot_s  #Mass Deficit
     h_def  =  (Q_absr  - Q_evap) / Q_evap   #evap deficit
@@ -98,7 +108,7 @@ def make_cycle(Vars, Inputs, Param):
     Deficit = np.array([m_def, h_def, Q_def])
 
     #Other Outputs
-    m_dot = m_dot_v
+    m_dot = [m_dot_s, m_dot_v]
     Q_L   = Q_evap
     Q_H   = m_dot_v * (h[1] - h[4])
     
