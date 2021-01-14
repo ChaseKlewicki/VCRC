@@ -68,7 +68,11 @@ def make_cycle(Vars, Inputs, Param):
     P[1] = P_c
     
     # Isentropic Ratio
-    eta_is = 3
+    eta_is = (0.96 - 0.00046 * (RPM / 60) + 9.4e-8 * (RPM / 60)**2
+              + 0.07 * (P_c / P[0]) - 0.0018 * (P_c / P[0])**2)
+    
+    if eta_is < 1:
+        print([RPM, P_c, P_e])
    
     h[1] = h[0] + (CP.PropsSI('H', 'P', P_c, 'S', s[0], 'R410a') - h[0]) / eta_is
     s[1] = CP.PropsSI('S', 'P', P[1], 'H', h[1], 'R410a')

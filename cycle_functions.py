@@ -731,13 +731,24 @@ def valve_func( CA_param, P_up, P_down, x):
 
 
 def capillary_tube_func(P_in, h_in, T_in):
-    d_coil = 2 * 0.0254
     
+    d_coil = 5 * 0.0254
     # 1/16" in OD copper tubing, .02" wall thickness
-    D_c = 1/32 * 0.0254
+#     D_c = sym.Symbol('D_c')
+    D_c = 0.01525 * 0.0254
     
     # length of capillary tube.  in diameter coil, 4 loops, 2 tubes.
-    L_c = d_coil * np.pi  * 3
+#     L_c = sym.Symbol('L_c')
+    L_c = d_coil * np.pi  * 4
+
+    # Saturation Pressure
+    P_sat = CP.PropsSI('P', 'T', T_in, 'Q', 0, 'R410a')
+    
+    # Critical Pressure
+    P_crit = CP.PropsSI('PCRIT', 'R410a')
+    
+    # Critical Temperature
+    T_crit = CP.PropsSI('TCRIT', 'R410a')
     
     # delta subcool
     T_SC = CP.PropsSI('T', 'P', P_in, 'Q', 0, 'R410a') - T_in
@@ -746,13 +757,13 @@ def capillary_tube_func(P_in, h_in, T_in):
     mu_f = CP.PropsSI('V', 'T', T_in, 'Q', 0, 'R410a')
 
     # Dynamic viscosity of r-410a vapor at inlet temperature
-    mu_g = CP.PropsSI('V', 'P', P_in, 'Q', 1, 'R410a')
+    mu_g = CP.PropsSI('V', 'T', T_in, 'Q', 1, 'R410a')
 
     # Density of r-410a fluid at inlet temperature
-    rho_f = CP.PropsSI('D', 'P', P_in, 'Q', 0, 'R410a')
+    rho_f = CP.PropsSI('D', 'T', T_in, 'Q', 0, 'R410a')
 
     # Density of r-410a vapor at inlet temperature
-    rho_g = CP.PropsSI('D', 'P', P_in, 'Q', 1, 'R410a')
+    rho_g = CP.PropsSI('D', 'T', T_in, 'Q', 1, 'R410a')
     
     # kinematic viscosity of r-410a fluid at inlet temperature
     nu_f = mu_f / rho_f
@@ -767,38 +778,36 @@ def capillary_tube_func(P_in, h_in, T_in):
     v_g = 1 / rho_g
 
     # Saturated liquid surface tension of r-410a vapor at inlet temperature
-    sigma = CP.PropsSI('I', 'P', P_in, 'Q', 0, 'R410a')
+    sigma = CP.PropsSI('I', 'T', T_in, 'Q', 0, 'R410a')
 
     # Enthalpy of vaporization at inlet temperature
     h_fgc = (CP.PropsSI('H', 'T', T_in, 'Q', 1, 'R410a') - 
              CP.PropsSI('H', 'T', T_in, 'Q', 0, 'R410a'))
 
     # Enthalpy of fluid at inlet pressure
-    h_f = CP.PropsSI('H', 'T', T_in, 'Q', 0, 'R410a')
+    h_f = CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a')
 
     # Enthalpy of vaporization at inlet pressure
     h_fg = (CP.PropsSI('H', 'P', P_in, 'Q', 1, 'R410a') - 
              CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a'))
     
-    C_pf = CP.PropsSI('C', 'T', T_in, 'Q', 0, 'R410a')
+    C_pf = CP.PropsSI('C', 'P', P_in, 'Q', 0, 'R410a')
 
     # A generalized continuous empirical correlation for predicting refrigerant
     # mass flow rates through adiabatic capillary tubes
 
-    pi_1 = D_c**2 * P_in /  v_f / mu_f**2
-    pi_2 = L_c / D_c
-    pi_3 = D_c**2 * C_pf * T_SC /  v_f**2 / mu_f**2
-    pi_4 = D_c**2 * h_fgc /  v_f**2 / mu_f**2
-    pi_5 = sigma * D_c /  v_f / mu_f**2
-    pi_6 = d_coil / D_c
+    pi_1 = (P_in - P_sat) / P_crit
+    pi_2 = T_SC / T_crit
+    pi_3 = L_c / d_coil
+    pi_4 = (nu_g - nu_f) / nu_g
+    pi_5 = sigma / D_c / P_in
+    pi_6 = rho_f * h_fg / P_sat
     
-    if T_SC <= 0:
-        m_dot =0
-    else:
-        pi_7 = (1.5104 * pi_1**0.5351 * pi_2**-0.3785 * pi_3**0.1074 * 
-            pi_4**-0.1596 * pi_5**0.0962 * 0.7887 * pi_6**0.0424)
+    pi_7 = (0.0081 * pi_1**0.1046 * pi_2**0.0182 * pi_3**-0.3903 * 
+            pi_4**-0.8836 * pi_5**-0.1396 *pi_6**0.6712)
     
-        m_dot = D_c * mu_f * pi_7
+    
+    m_dot = pi_7 * D_c**2 * np.sqrt(P_in * rho_f)
     
     return m_dot 
 
