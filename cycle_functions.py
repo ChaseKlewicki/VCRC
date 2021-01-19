@@ -32,6 +32,9 @@ def compr_func( inlet_state, RPM, P_ratio):
     #Param
     eta_v = 1 -  0.225 * P_ratio        # Compression Ratio
     Disp = 5.25E-6    #[m^3 per rev] #volume displacement
+    
+    if eta_v < 0:
+        raise ValueError('Compression ratio too high')
 
     h_g   = CP.PropsSI('H', 'P', P_e, 'Q', 1, 'R410a')
     if h_e_o < h_g:
@@ -40,10 +43,6 @@ def compr_func( inlet_state, RPM, P_ratio):
     rho = CP.PropsSI('D', 'P', P_e, 'H' ,h_e_o, 'R410a')
 
     m_dot = RPM / 60 * Disp * eta_v * rho
-    
-    if P_ratio > 4:
-        m_dot = 0
-        warnings.warn('Compression ratio very high')
 
     return m_dot
 
@@ -103,7 +102,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Geometric Characteristics
         
         # Fin density (fins/m) [measured 19 fins per inch]
-        Nf = 15 / 0.0254
+        Nf = 19 / 0.0254
 
         # Outside diameter of tubing (m) [measured .31"]
         do = 0.31 *.0254
@@ -300,8 +299,8 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
 
         # Geometric Characteristics
         
-        # Fin density (fins/m) [measured 15 fins per inch]
-        Nf = 15 / 0.0254
+        # Fin density (fins/m) [measured 19 fins per inch]
+        Nf = 19 / 0.0254
 
         # Outside diameter of tubing (m) [measured .21"]
         do = 0.21 * 0.0254
@@ -509,8 +508,7 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, airspeed):
     # Input state must be a row vector containing pressure 
     # and enthalpy in that order
     # input_state = [P, h]
-
-    airspeed = 0.2 * airspeed
+    
     #Initialize Vars
     #----------------------
     P_in = input_state[0]
@@ -582,7 +580,7 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, airspeed):
     UA_f = UA_3
 
     #Properties
-    c_p_g = 0.5 * (CP.PropsSI('C', 'P', P_in, 'T', T_in, 'R410a') + 
+    c_p_g = 0.5 * (CP.PropsSI('C', 'P', P_in, 'H', h_in, 'R410a') + 
                    CP.PropsSI('C', 'P', P_in, 'Q', 1, 'R410a'))
     c_p_f = CP.PropsSI('C', 'P', P_in, 'Q', 0, 'R410a')
 
@@ -606,76 +604,76 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, airspeed):
     #
 
     #--- Superheat-into-Saturation Process ---
+    # Check that ambiet temperature is above the saturation 
+    # and inlet temperature otherwise go straight to subcooled
+    if (T_amb - T_in) < 0  and (T_amb - T_sat) < 0:
+        dz_1 = c_p_g  * flowrate / UA_1 * np.log((T_amb - T_in) / 
+                                                 (T_amb - T_sat))
 
-    dz_1 = c_p_g  * flowrate / UA_1 * np.log((T_amb - T_in) / 
-                                             (T_amb - T_sat))
-
-    #Add exception if superheated phase takes up the
-    #entire HX domain
-    if (dz_1 > 1):
-        T = np.nan
-        h = np.nan
-        P = np.nan
-        abcissa = np.nan
-        raise ValueError('no exception when superheated' +
-                         ' phase takes up entire domain')
-
-    # assign output
-    #-----------------
-    T[1] = T_sat
-    h[1] = h_g
-    #-----------------
+        #Add exception if superheated phase takes up the
+        #entire HX domain
+        if (dz_1 > 1):
+            T = np.nan
+            h = np.nan
+            P = np.nan
+            abcissa = np.nan
+            raise ValueError('no exception when superheated' +
+                             ' phase takes up entire domain')
 
 
-    #--- SatVap-into-SatLiq Process ---
+        T[1] = T_sat
+        h[1] = h_g
 
-    dz_2 = flowrate * h_fg / (UA_2 * (T_sat - T_amb))
 
-        #Begin exception if saturation phase takes up the 
-        #remainder of the HX domain
-    if (dz_1 + dz_2) > 1:
+        #--- SatVap-into-SatLiq Process ---
 
-        dz_2   = 1 - dz_1
+        dz_2 = flowrate * h_fg / (UA_2 * (T_sat - T_amb))
 
-        #solve system 
-        #gamma and delta_h are the variables\
-        x = lambda dh: (dh + h_fg) / h_fg # x(var[1])
-        f = lambda var: [dz_2 * (T_amb - T_sat) * 
-                         (UA_f + (UA_g - UA_f) * var[0]) - 
-                         (flowrate * var[1]),
+            #Begin exception if saturation phase takes up the 
+            #remainder of the HX domain
+        if (dz_1 + dz_2) > 1:
 
-                         (1 - x(var[1])) * 
-                         (1 / (1 - rho_rat) - var[0]) + 
-                         rho_rat / (rho_rat - 1)**2 * 
-                         np.log(rho_rat + (1 - rho_rat) * 
-                                x(var[1]))
-                        ]
+            dz_2   = 1 - dz_1
 
-        b = fsolve( f, [gamma, -h_fg] )
-        # gamma = b(1);
-        dh_2  = b[1]
+            #solve system 
+            #gamma and delta_h are the variables\
+            x = lambda dh: (dh + h_fg) / h_fg # x(var[1])
+            f = lambda var: [dz_2 * (T_amb - T_sat) * 
+                             (UA_f + (UA_g - UA_f) * var[0]) - 
+                             (flowrate * var[1]),
 
-        #-----------------
-        # Produce Output
-        #
-        h_out = h_g + dh_2;
-        #
-        # assign output
-        #-----------------
-        T[2] = T_sat
-        h[2] = h_out
-        T[3] = T[2]
-        h[3] = h[2]
-        #-----------------
+                             (1 - x(var[1])) * 
+                             (1 / (1 - rho_rat) - var[0]) + 
+                             rho_rat / (rho_rat - 1)**2 * 
+                             np.log(rho_rat + (1 - rho_rat) * 
+                                    x(var[1]))
+                            ]
 
-        #Otherwise go to subcool process  
-    else:
+            b = fsolve( f, [gamma, -h_fg] )
+            # gamma = b(1);
+            dh_2  = b[1]
 
-        # assign output
-        #-----------------
-        T[2] = T_sat
-        h[2] = h_f
-        #-----------------      
+            #-----------------
+            # Produce Output
+            #
+            h_out = h_g + dh_2;
+            #
+            # assign output
+            #-----------------
+            T[2] = T_sat
+            h[2] = h_out
+            T[3] = T[2]
+            h[3] = h[2]
+            #-----------------
+
+            #Otherwise go to subcool process  
+        else:
+
+            # assign output
+            #-----------------
+            T[2] = T_sat
+            h[2] = h_f
+            #-----------------      
 
 
 
@@ -692,6 +690,7 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, airspeed):
     #-----------------
     T[3] = T_out;
     h[3] = h_out;
+    
     # Pressure drop determined empirically applied linearly
     P[1] = P[0] - 5e4 * dz_1
     P[2] = P[1] - 5e4 * dz_2
@@ -803,11 +802,14 @@ def capillary_tube_func(P_in, h_in, T_in):
     pi_5 = sigma / D_c / P_in
     pi_6 = rho_f * h_fg / P_sat
     
-    pi_7 = (0.0081 * pi_1**0.1046 * pi_2**0.0182 * pi_3**-0.3903 * 
+    if T_SC < 0:
+        warnings.warn('Warning cavitation in expansion valve')
+        m_dot = 0
+    else:
+        pi_7 = (0.0081 * pi_1**0.1046 * pi_2**0.0182 * pi_3**-0.3903 * 
             pi_4**-0.8836 * pi_5**-0.1396 *pi_6**0.6712)
-    
-    
-    m_dot = pi_7 * D_c**2 * np.sqrt(P_in * rho_f)
+        
+        m_dot = pi_7 * D_c**2 * np.sqrt(P_in * rho_f)
     
     return m_dot 
 

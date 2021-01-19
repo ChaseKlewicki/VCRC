@@ -2,6 +2,7 @@ import numpy as np
 import CoolProp.CoolProp as CP
 import matplotlib.pyplot as plt
 import pandas as pd
+import os
 
 
 # Create fit function for pressure transducers using pressure cal coefficients
@@ -154,7 +155,7 @@ def experimental_analysis(file, P_amb, Input_Q):
 
     return experimentalData
 
-def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False, color = ""):
+def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False, color = "", save = False):
     # A function which plots the T-s and P-h diagram of the experimental 
     # measurements of the VCRC and model of the VCRC. If only one arguement is given
     # the function assumes experimental data and plots T-s and P-h numbered points.
@@ -210,8 +211,6 @@ def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod 
         plt.xlabel('Enthalpy (j/kg)')
         plt.ylim(exp['P (Pa)'].min() - 500e3)
         plt.title('Prototype Refrigeration Sys. P-h ')
-
-        plt.show()
         
     if len(args) == 1:
         exp = args[0] 
@@ -257,8 +256,12 @@ def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod 
         plt.xlabel('Enthalpy (j/kg)')
         plt.ylim(exp['P (Pa)'].min() - 500e3)
         plt.title('Prototype Refrigeration Sys. P-h ')
-
-        plt.show()    
+    
+    if save:
+        plt.savefig(str(exp.name) + ".png")
+    else:
+        plt.show()
+        
     return
 
 def example_plots():

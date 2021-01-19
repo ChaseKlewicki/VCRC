@@ -1,7 +1,13 @@
 import numpy as np
 import CoolProp.CoolProp as CP
-from .cycle_functions import *
+from cycle_functions import *
 from scipy.optimize import minimize, Bounds, NonlinearConstraint
+import warnings
+import pandas as pd
+import numpy as np
+import CoolProp.CoolProp as CP
+from cycle_functions import *
+from scipy.optimize import minimize, Bounds, NonlinearConstraint, LinearConstraint
 import warnings
 import pandas as pd
 
@@ -49,12 +55,12 @@ def make_cycle(Vars, Inputs, Param):
     # pressure drop accross condenser (Pa)
     delta_P_c = 5e4
     
-    # Init state
-    T_sat_e = CP.PropsSI('T', 'P', P_e - delta_P_e, 'Q', 1, 'R410a') # K
-    h_g     = CP.PropsSI('H', 'P', P_e - delta_P_e, 'Q', 1, 'R410a') # J/kg
-    
-    
     P[0] = P_e - delta_P_e # Pressure drop accross evap determined empirically
+    
+    
+    # Init state
+    T_sat_e = CP.PropsSI('T', 'P', P[0], 'Q', 1, 'R410a') # K
+    h_g     = CP.PropsSI('H', 'P', P[0], 'Q', 1, 'R410a') # J/kg
     T[0] = T_sat_e + T_SH
     h[0] = CP.PropsSI('H', 'P', P[0], 'T', T[0], 'R410a')
     abscissa[0] = 0
@@ -63,13 +69,11 @@ def make_cycle(Vars, Inputs, Param):
     STATE   = [P[0], h[0]]
     
     #   calculate compressor
-    m_dot_s = compr_func( STATE, RPM, P_c / P[0] )
-    
+    m_dot_s = compr_func(STATE, RPM, P_c / P[0])
     P[1] = P_c
     
     # Isentropic Ratio
-    eta_is = (0.96 - 0.00046 * (RPM / 60) + 9.4e-8 * (RPM / 60)**2
-              + 0.07 * (P_c / P[0]) - 0.0018 * (P_c / P[0])**2)
+    eta_is = 2.9
     
     if eta_is < 1:
         print([RPM, P_c, P_e])
@@ -131,10 +135,6 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
     T_amb  = Inputs[1]
     T_pod  = Inputs[2]
 
-    # bounds
-    bnds = Bounds([CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 200e3, 0], # Lower Bounds
-                  [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a'), 30], True) # Upper Bounds
-
     #
     #
     # Make Objective Function
@@ -154,7 +154,12 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
         c = (T_pod - CP.PropsSI('T', 'P', Vars[1], 'Q', 0, 'R410a')) - Vars[2] 
         return c
 
-    cons = NonlinearConstraint(nonlcon, 0.001, np.inf)
+    nonLinear = NonlinearConstraint(nonlcon, 0.1, np.inf)
+    
+    linear = LinearConstraint(np.identity(len(Vars)),
+                              [CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 200e3, 0.1], # Lower Bounds
+                              [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a'), 30] # Upper Bounds
+                             )
     
     #Options
     #options = optimoptions('fmincon','Display','iter','Algorithm','sqp');
@@ -162,22 +167,19 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
     #
     # Solve the problem.
     try:
-        res = minimize(objective, Vars, bounds = bnds, constraints=cons, 
+        res = minimize(objective, Vars, constraints = [nonLinear, linear], 
                        method = 'trust-constr', options = {'maxiter': 500})
-    except ValueError:
+    except ValueError as e:
+        print(e)
+        print('initial Point: ' + str(Vars))
         res = {'success': False}
     
     # ---
     if res['success']:
         Vars = res.x
-#     else:
-#         warnings.warn('Did not converge')
-    #
-    # Return Final Deficit
-    #
-    [_, _, _, _, _, _, _, _, _, Deficit] = make_cycle(Vars, Inputs, Param)
-    #
-    # ---
+        [_, _, _, _, _, _, _, _, _, Deficit] = make_cycle(Vars, Inputs, Param)
+    else:
+        Deficit = [1, 1, 1]
 
     return [Vars, Deficit]
 
@@ -194,8 +196,8 @@ def solve_cycle_shotgun(Inputs, Param):
     ub = [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a')]
 
     #Starting points
-    P_c   = lb[0] + (ub[0] - lb[0]) * np.linspace( 0.2, 0.8, SPREAD)
-    P_e   = lb[1] + (ub[1] - lb[1]) * np.linspace( 0.2, 0.8, SPREAD)
+    P_c   = lb[0] + (ub[0] - lb[0]) * np.linspace( 0.1, 0.9, SPREAD)
+    P_e   = lb[1] + (ub[1] - lb[1]) * np.linspace( 0.1, 0.9, SPREAD)
     T_SH  = .5
 
     # Create list of possible combinations of pressures
