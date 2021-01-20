@@ -155,7 +155,7 @@ def experimental_analysis(file, P_amb, Input_Q):
 
     return experimentalData
 
-def thermodynamic_plots(*args, lgnd =['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False, color = "", save = False):
+def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False, color = "", save = False):
     # A function which plots the T-s and P-h diagram of the experimental 
     # measurements of the VCRC and model of the VCRC. If only one arguement is given
     # the function assumes experimental data and plots T-s and P-h numbered points.
