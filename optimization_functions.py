@@ -11,25 +11,23 @@ from scipy.optimize import minimize, Bounds, NonlinearConstraint, LinearConstrai
 import warnings
 import pandas as pd
 
-def make_cycle(Vars, Inputs, Param):
+def make_cycle(Vars, Inputs):
 
     # ----------------------------------------------#
     # ==------ Vars  -------==#
     P_c    = Vars[0] # Pa
     P_e    = Vars[1] # Pa
     T_SH   = Vars[2] # delta-T K
+    RPM_evap = Vars[3]
+    RPM    = Vars[4]
+    
     # ----------------------------------------------#
     #==------ Inputs ------==#
     
     Q_load = Inputs[0] # W
     T_amb  = Inputs[1] # K
     T_pod  = Inputs[2] # K
-    U_cond = Inputs[3] # m/s
-    
-    #----------------------------------------------#
-    #==------ Param -------==#
-    RPM    = Param[0]
-    
+    RPM_cond = Inputs[3] 
     
     #----------------------------------------------#
     #==-- Init. Outputs  --==#
@@ -85,12 +83,11 @@ def make_cycle(Vars, Inputs, Param):
     
     
     #   calculate condenser
-    [P[1:5], T[1:5], h[1:5], s[1:5], abscissa[1:5]] = Condenser_Proc( STATE, 
-                                                             'h', m_dot_s, T_amb, U_cond)
+    [P[1:5], T[1:5], h[1:5], s[1:5], abscissa[1:5], W_fan_c] = Condenser_Proc( STATE, 
+                                                             'h', m_dot_s, T_amb, RPM_cond)
 
 
-    #   calculate expansion
-#     m_dot_v = valve_func( CA, P_c, P_e, valve )
+    # calculate expansion mass flow rate
     m_dot_v = capillary_tube_func(P[4], h[4], T[4])
     
     P[5] = P_e
@@ -98,10 +95,9 @@ def make_cycle(Vars, Inputs, Param):
     h[5] =  h[4]
     
     STATE = [P[5], h[5]]
-    
 
     #   calculate evap
-    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9]] = Evap_Proc(STATE, m_dot_s, T_pod)
+    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9],  W_fan_e] = Evap_Proc(STATE, m_dot_s, T_pod, RPM_evap)
 
     abscissa[5:9] = abscissa[5:9] + abscissa[4]
 
@@ -123,14 +119,15 @@ def make_cycle(Vars, Inputs, Param):
     # Compute compressor work based on isentropic, adiabatic compressor
     W     = m_dot_s * (CP.PropsSI('H', 'P', P_c, 'S', s[0], 'R410a') - h[0])
 
+    # Compute coefficient of system performance
+    COSP = Q_L / (W + W_fan_c + W_fan_e)
+
+    return [P, T, h, s, abscissa, m_dot, Q_L, Q_H, W, COSP, Deficit]
 
 
-    return [P, T, h, s, abscissa, m_dot, Q_L, Q_H, W, Deficit]
+def adjust_cycle_fmin(Vars, Inputs):
 
-
-def adjust_cycle_fmin(Vars, Inputs, Param):
-
-    assert(np.size(Vars) == 3)
+    assert(np.size(Vars) == 5)
 
     T_amb  = Inputs[1]
     T_pod  = Inputs[2]
@@ -140,31 +137,33 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
     # Make Objective Function
 
     def objective(Vars):
-        [_, _, _, _, _, _, _, _, _, Obj] = make_cycle(Vars, Inputs, Param)
+        [_, _, _, _, _, _, _, _, _, Obj, _] = make_cycle(Vars, Inputs)
         
-        Obj = 1000 * np.linalg.norm(Obj)
+        Obj = -Obj
         
         return Obj
-                        
-    #
-    #
-    # Make Nonlinear Constraint for T_SH
-
-    def nonlcon(Vars):
-        c = (T_pod - CP.PropsSI('T', 'P', Vars[1], 'Q', 0, 'R410a')) - Vars[2] 
+    
+    def nonlcon1(Vars):
+        
+        c = (T_pod - CP.PropsSI('T', 'P', Vars[1], 'Q', 0, 'R410a')) - Vars[2] # Superheat constraint
+        
         return c
-
-    nonLinear = NonlinearConstraint(nonlcon, 0.1, np.inf)
+             
+    def nonlcon2(Vars):
+        
+        [_, _, _, _, _, _, _, _, _, _, Deficit] = make_cycle(Vars, Inputs)
+        c = np.linalg.norm(Deficit) # deficit constraint
+        
+        return c
+    
+    nonLinear1 = NonlinearConstraint(nonlcon1, 0, np.inf)
+    nonLinear2 = NonlinearConstraint(nonlcon2, -0.05, 0.05)
     
     linear = LinearConstraint(np.identity(len(Vars)),
-                              [CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 200e3, 0.1], # Lower Bounds
-                              [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a'), 30] # Upper Bounds
+                              [CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 200e3, 0.25, 0, 2000], # Lower Bounds
+                              [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a'), 30, 2900, 6000] # Upper Bounds
                              )
     
-    #Options
-    #options = optimoptions('fmincon','Display','iter','Algorithm','sqp');
-
-    #
     # Solve the problem.
     try:
         res = minimize(objective, Vars, constraints = [nonLinear, linear], 
@@ -177,19 +176,19 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
     # ---
     if res['success']:
         Vars = res.x
-        [_, _, _, _, _, _, _, _, _, Deficit] = make_cycle(Vars, Inputs, Param)
+        [_, _, _, _, _, _, _, _, COSP, _] = make_cycle(Vars, Inputs)
     else:
-        Deficit = [1, 1, 1]
+        COSP = np.nan
 
-    return [Vars, Deficit]
+    return [Vars, COSP]
 
 
-def solve_cycle_shotgun(Inputs, Param):
+def solve_cycle_shotgun(Inputs):
     
     T_amb  = Inputs[1] # K
     T_pod  = Inputs[2] # K
     
-    SPREAD = 4;
+    SPREAD = 1;
 
     #Var Extents
     lb = [CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 400e3]
@@ -199,35 +198,28 @@ def solve_cycle_shotgun(Inputs, Param):
     P_c   = lb[0] + (ub[0] - lb[0]) * np.linspace( 0.1, 0.9, SPREAD)
     P_e   = lb[1] + (ub[1] - lb[1]) * np.linspace( 0.1, 0.9, SPREAD)
     T_SH  = .5
+    RPM_evap = 2900
+    RPM = 3550
 
     # Create list of possible combinations of pressures
-    Vars = np.array(np.meshgrid(P_c, P_e, T_SH)).T.reshape(-1, 3)
+    Vars = np.array(np.meshgrid(P_c, P_e, T_SH, RPM_evap, RPM)).T.reshape(-1, 5)
 
-    #Initialize Vars and Deficits
-    normDeficit = np.zeros(len(Vars))
-    Deficit     = np.zeros((len(Vars), 3))
+    #Initialize Vars and COSPs
+    COSPs     = np.zeros(len(Vars))
 
     # Try different initial points
     for ind, Var in enumerate(Vars):
         #Step Vars Forward
-        [Vars[ind], Deficit[ind]] = adjust_cycle_fmin( Var, Inputs, Param)
-        normDeficit[ind] = np.linalg.norm(Deficit[ind])
+        [Vars[ind], COSPs[ind]] = adjust_cycle_fmin( Var, Inputs)
         
     
-    # find solution with lowest error
-    Vars = Vars[normDeficit == np.nanmin(normDeficit)][0]
-    
-    # Check if error is lower than 3% 
-    converged = 1
-    if normDeficit[normDeficit == np.nanmin(normDeficit)] > 0.05:
-        converged = 0
-        warnings.warn('Warning: |Deficit| = ' + 
-                      str(normDeficit[normDeficit == min(normDeficit)]))
+    # find solution with lowest COSP
+    Vars = Vars[COSPs == np.nanmin(COSPs)][0]
 
     #Calc
-    [ P, T, h, s, abcissa, m_dot, Q_L, Q_H, W, Deficit] = make_cycle(Vars, 
+    [P, T, h, s, abcissa, m_dot, Q_L, Q_H, W, COSP, Deficit] = make_cycle(Vars, 
                                                                      Inputs,
                                                                      Param)
     Props = [P, T, h, s, abcissa]
         
-    return [Props, m_dot, Q_L, Q_H, W, Deficit, converged]
+    return [Props, m_dot, Q_L, Q_H, W, COSP, Deficit]
