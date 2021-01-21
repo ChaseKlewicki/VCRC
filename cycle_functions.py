@@ -265,11 +265,6 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         
         #Overall Fin efficiency
         fin_eff = 1 - (1 - eta_f) * A_f / A_a
-
-#         print(j)
-#         print(h_a)
-#         print(A_a)
-#         print(fin_eff)
         
         addcnst = A_i * R_tw + A_i / (h_a * fin_eff * A_a)
 
@@ -329,7 +324,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Number of Rows 
         Nr = 3
         
-        # Number of tubes
+        # Number of tubes. Two tube slots are empty
         Nt = 44 - 2
 
 
@@ -465,10 +460,6 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         #Overall Fin efficiency
         fin_eff = 1 - (1 - eta_f) * A_f / A_a
         
-#         print(j)
-#         print(h_a)
-#         print(A_a)
-#         print(fin_eff)
         
         addcnst = A_i * R_tw + A_i / (h_a * fin_eff * A_a)
 
@@ -502,12 +493,23 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
     return [UA_g, UA_f]
 
 
-def Condenser_Proc(input_state, strarg, flowrate, T_amb, airspeed):
+def Condenser_Proc(input_state, strarg, flowrate, T_amb, RPM):
 
 
     # Input state must be a row vector containing pressure 
     # and enthalpy in that order
     # input_state = [P, h]
+    
+    # Compute fan work and volumetric flow rate based on fan rpm
+    [V_dot, W_fan] = fan(RPM)
+    
+    # Overall Length (m) [measured 15 15/16"]
+    L1 = (15 + 15/16) * 0.0254
+
+    # Overall height (m) [measured 12.5"]
+    L3 = 12.5 * 0.0254
+    
+    airspeed = V_dot / L1 / L3  #[m/s]
     
     #Initialize Vars
     #----------------------
@@ -708,7 +710,7 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, airspeed):
     s = CP.PropsSI('S', 'P', P, 'H', h, 'R410a')
 
 
-    return [P, T, h, s, abcissa]
+    return [P, T, h, s, abcissa, W_fan]
 
 
 def valve_func( CA_param, P_up, P_down, x):
@@ -814,16 +816,23 @@ def capillary_tube_func(P_in, h_in, T_in):
     return m_dot 
 
 
-def Evap_Proc(input_state, flowrate, T_pod):
+def Evap_Proc(input_state, flowrate, T_pod, RPM):
 
 
     # Input state must be a row vector containing pressure 
     # and enthalpy in that order
     # input_state = [P, h]
 
+    # Compute fan work and volumetric flow rate based on fan rpm
+    [V_dot, W_fan] = fan(RPM)
+    
+    # Evaporator Overall Length (m) 
+    L1 = (12.5) * 0.0254
 
-    # Artificial Input
-    airspeed = 0.5 #[m/s]
+    # Evaporator Overall height (m) 
+    L3 = 8.5 * 0.0254
+    
+    airspeed = V_dot / L1 / L3  #[m/s]
 
     #
     # Initialize Vars
@@ -1006,4 +1015,13 @@ def Evap_Proc(input_state, flowrate, T_pod):
     s = CP.PropsSI('S', 'P', P, 'H', h, 'R410a')
 
 
-    return [P, T, h, s, abcissa]
+    return [P, T, h, s, abcissa, W_fan]
+
+
+def fan(RPM):
+    # Fan performance based on ebmpabst RER 190-39/14/2TDLOU fan
+    
+    W = RPM**3 * 57.1 / 2900**3 # W
+    V_dot = RPM * 376.7 / 2900 * 0.00047194745 # m^3/s
+    
+    return [V_dot, W]
