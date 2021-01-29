@@ -359,13 +359,13 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
 
     return experimentalData
 
-def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False, color = "", save = False):
+def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod Temperature'], annotate = False, style = ["go", "-o"], save = False):
     # A function which plots the T-s and P-h diagram of the experimental 
     # measurements of the VCRC and model of the VCRC. If only one arguement is given
     # the function assumes experimental data and plots T-s and P-h numbered points.
     
     # arg 1: Expereimental data in pandas dataframe
-    # arg 2: data to compare in pandas dataframe
+    # arg 2: Data to compare in pandas dataframe
     txt = ["1'", "2'", "5'", "6'"]
     
     if len(args) == 2:
@@ -387,9 +387,9 @@ def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
         plt.subplot(121)
         plt.plot(vaporDomeS, vaporDomeT, '-')
-        plt.plot(model['s (j/kg K)'], model['T (K)'], color + '-o')
-        plt.plot(exp['s (j/kg K)'], exp['T (K)'], 'go')
-        if annotate == True:
+        plt.plot(model['s (j/kg K)'], model['T (K)'], style[1])
+        plt.plot(exp['s (j/kg K)'], exp['T (K)'], style[0])
+        if annotate:
             for ind, s in enumerate(exp['s (j/kg K)']):
                 plt.annotate(txt[ind], (exp['s (j/kg K)'][ind] + 10, exp['T (K)'][ind] + 1))
             
@@ -405,9 +405,9 @@ def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod
 
         plt.subplot(122)
         plt.plot(vaporDomeH, vaporDomeP, '-')
-        plt.plot(model['h (j/kg)'], model['P (Pa)'], color + '-o')
-        plt.plot(exp['h (j/kg)'], exp['P (Pa)'], 'go')
-        if annotate == True:
+        plt.plot(model['h (j/kg)'], model['P (Pa)'], style[1])
+        plt.plot(exp['h (j/kg)'], exp['P (Pa)'], style[0])
+        if annotate:
             for ind, h in enumerate(exp['h (j/kg)']):
                 plt.annotate(txt[ind], (exp['h (j/kg)'][ind] + 1e3, exp['P (Pa)'][ind] + 0.1e5))
             
@@ -438,10 +438,11 @@ def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod
         plt.plot([500, 2000],[exp['Ambient T (K)'], exp['Ambient T (K)']], 'c--')
         plt.plot([500, 2000],[exp['Pod T (K)'], exp['Pod T (K)']], 'r--')
         
-        for ind, s in enumerate(exp['s (j/kg K)']):
-            plt.annotate(txt[ind], (exp['s (j/kg K)'][ind] + 10, exp['T (K)'][ind] + 1))
+        if annotate:
+            for ind, s in enumerate(exp['s (j/kg K)']):
+                plt.annotate(txt[ind], (exp['s (j/kg K)'][ind] + 10, exp['T (K)'][ind] + 1))
             
-        plt.plot(exp['s (j/kg K)'], exp['T (K)'], 'o')
+        plt.plot(exp['s (j/kg K)'], exp['T (K)'], style[0])
         plt.ylabel('Temperature (K)')
         plt.xlabel('Entropy (j/kg/K)')
         plt.legend(lgnd)
@@ -451,10 +452,11 @@ def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod
         plt.ylim(exp['T (K)'].min() - 10)
         plt.subplot(122)
         plt.plot(vaporDomeH, vaporDomeP, '-')
-        plt.plot(exp['h (j/kg)'], exp['P (Pa)'], 'o')
+        plt.plot(exp['h (j/kg)'], exp['P (Pa)'], style[0])
         
-        for ind, h in enumerate(exp['h (j/kg)']):
-            plt.annotate(txt[ind], (exp['h (j/kg)'][ind] + 1e3, exp['P (Pa)'][ind] + 0.1e5))
+        if annotate:
+            for ind, h in enumerate(exp['h (j/kg)']):
+                plt.annotate(txt[ind], (exp['h (j/kg)'][ind] + 1e3, exp['P (Pa)'][ind] + 0.1e5))
             
         plt.ylabel('Pressure (Pa)')
         plt.xlabel('Enthalpy (j/kg)')
