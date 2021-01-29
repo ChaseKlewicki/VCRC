@@ -8,10 +8,10 @@ import os
 # Create fit function for pressure transducers using pressure cal coefficients
 pressureFit = np.poly1d([125 * 6.89476,  -62.5 * 6.89476]) * 1000 
 
-def experimental_analysis(file, P_amb, Input_Q):
+def experimental_analysis_tunnel(file, P_amb, Input_Q):
     # A function which performs analysis of steady state values for 
     # the pressure and temperature measurements taken during the prototype 
-    # experiments. 
+    # experiments with wind tunnel used for air flow across condenser. 
     
     # file: Location of experimental data file.
     # P_amb: Ambient pressue measured with altimeter.
@@ -150,6 +150,187 @@ def experimental_analysis(file, P_amb, Input_Q):
                                      'Pod T (K)': [T_mean_pod + 273.15], 'Wind Tunnel Velocity (m/s)': windSpeed, 
                                      'Heating Element Power (W)': Input_Q, 'Ambient Heat Load (W)': ambient_Q, 
                                      'Total Heat Load (W)': load, 'file': file,})
+
+    
+
+    return experimentalData
+
+def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
+    # A function which performs analysis of steady state values for 
+    # the pressure and temperature measurements taken during the prototype 
+    # experiments with fan used for air flow across condenser. 
+    
+    # file: Location of experimental data file.
+    # P_amb: Ambient pressue measured with altimeter.
+    # Q_element: Input Power to heating element.
+    # W_refrig: Power consumed by blower and compressor
+    
+    
+    # Import Radial Test Data from experiment
+    refrigData = pd.read_csv(file, sep='\t', header=21)
+
+    # Create time column with time step and index
+    refrigData['Time (s)'] = refrigData['X_Value'] * \
+        refrigData['Time Step (s)'][0]
+
+    # Create pressure columns with transducer fit function
+    refrigData['Pressure Transducer 1 (PaG)'] = pressureFit(
+        refrigData['Pressure  1'])
+    refrigData['Pressure Transducer 2 (PaG)'] = pressureFit(
+        refrigData['Pressure 2'])
+    refrigData['Pressure Transducer 3 (PaG)'] = pressureFit(
+        refrigData['Pressure 3'])
+    refrigData['Pressure Transducer 4 (PaG)'] = pressureFit(
+        refrigData['Pressure 4'])
+
+    # Calculate mean ambient temperature
+    T_amb = refrigData['Thermistor (C)'][-600:-1].mean()  + 273.15
+
+    # Compute air speed measured behind condenser (m/s) [not very accurate]
+    windSpeed = np.sqrt(refrigData['Pitot Tube (Torr)'].abs(
+    ) * 133.322 * 2 / CP.PropsSI('D', 'T', T_amb, 'P', P_amb, 'Air.mix')).mean()
+
+    # Compute mean steady state radial temperatures from last 600 seconds
+    radialProfile = refrigData[['Thermocouple 2 (C)', 'Thermocouple 4 (C) ', 'Thermocouple 7 (C)']][-600:-1].mean()
+    
+    # Plot Comparison of Radial Temmperature Profiles
+    locations = np.array([1.5, 7.5, 16.5])
+
+    # Compute area for each thermocouple
+    area = (np.array([4, 12, 18]) / 100)**2 - (np.array([0, 4, 12]) / 100)**2
+
+    # compute mean internal temperature
+    T_mean_pod = (radialProfile*area).sum() / \
+        (locations[-1] / 100 + 1.5 / 100)**2
+
+
+    # Calculate steady state mean pressures and temperatures
+    pressures = refrigData[['Pressure Transducer 1 (PaG)', 'Pressure Transducer 3 (PaG)', 'Pressure Transducer 2 (PaG)',
+                            'Pressure Transducer 4 (PaG)']][-600:-1].mean().values + P_amb  # Pressure from barometer
+
+    # Put in proper order: post evap, post compressor, post condenser, post capillary tubes
+    pressures = pressures[[1, 2, 3, 0]]
+
+    temperatures = refrigData[['Temperature  1', 'Temperature 2', 'Temperature 3', 'Temperature 4'
+                               ]][-600:-1].mean().values + 273.15
+
+    # Put in proper order: post evap, post compressor, post condenser, post capillary tubes
+    temperatures = temperatures[[1, 2, 3, 0]]
+    
+    # Calculate compensation due to temperature of refrigerant being measured on the outside surface of the tubing
+    # http://www.burnsengineering.com/local/uploads/files/small_diameter_lines.pdf
+    temperatures[0:3] = temperatures[0:3] + 0.02 * (temperatures[0:3] - T_amb)
+
+    temperatures[3] = temperatures[3] + 0.02 * (temperatures[3] - T_mean_pod-273.15)
+    
+    # Look up saturated enthalpy and entropy
+    fluid = 'R410a'
+
+    #Compute Enthalpy and entropy from P and T
+    cycleEnthalpy = CP.PropsSI('H', 'P', pressures, 'T', temperatures, fluid)
+
+    cycleEntropy = CP.PropsSI('S', 'P', pressures, 'T', temperatures, fluid)
+
+    # Check if any positions are two phase:
+    TP = np.isinf(cycleEnthalpy)
+    
+    for ind, point in enumerate(TP):
+        if point:
+            x = (pressures[ind] - CP.PropsSI('P', 'T', temperatures[ind], 'Q', 1, fluid)) / \
+            (CP.PropsSI('P', 'T', temperatures[ind], 'Q', 0, fluid) - 
+             CP.PropsSI('P', 'T', temperatures[ind], 'Q', 1, fluid))
+
+            cycleEnthalpy[ind] = CP.PropsSI('H', 'P', pressures[ind], 'Q', x, fluid)
+            cycleEntropy[ind] = CP.PropsSI('S', 'P', pressures[ind], 'Q', x, fluid)
+    
+    
+    # Model pod as cylindrical prism 
+    # inside radius [7.75"]
+    r_i = 7.75 * 0.0254
+    # outside radius [8.25"]
+    r_o = 8.25 * 0.0254
+    
+    # thermal conductivity of plywood (W/mk)
+    k_ply = 0.13
+    
+    # effective thermal conductivity of interior convection (W/mk)
+    k_eff = 4.91
+    
+    # length of prototype (m)
+    L = 65 * 0.0254 / 2
+    
+    # Free stream velocity (m/s)
+    U = windSpeed
+    
+    # film temperature (K)
+    T_f = (radialProfile[2] + 273.15 + T_amb) / 2
+    
+    # Temperature difference between ambient and pod (K)
+    delta_T = np.abs(radialProfile[2] + 273.15 - T_amb)
+    
+    # Thermal conductivity (W/m K)
+    k  = CP.PropsSI('L', 'T', T_f, 'P', P_amb, 'Air.mix')
+    
+    # isobaric Specific Heat of air (j/kg/k)
+    C_p = CP.PropsSI('C', 'T', T_f, 'P', P_amb, 'Air.mix')
+    
+    # absolute viscosity of air (Pa*s)
+    mu = CP.PropsSI('V', 'T', T_f, 'P', P_amb, 'Air.mix')
+    
+    # Density of air (kg/m^3) 
+    rho = CP.PropsSI('D', 'T', T_f, 'P', P_amb, 'Air.mix')
+    
+    # Kinematic Viscosity (m^2/s)
+    nu = mu / rho
+    
+    # Prandtl number of air
+    Pr = CP.PropsSI('Prandtl', 'T', T_f, 'P', P_amb, 'Air.mix')
+    
+    # Isobaric expansion coefficient (1/K)
+    beta = CP.PropsSI('isobaric_expansion_coefficient', 'T', T_f, 'P', P_amb, 'Air.mix')
+    
+    # gravity (m/s^2)
+    g = 9.81
+    
+    # Thermal diffusivity (m^2/s)
+    alpha = k / rho / C_p
+    
+    # Raleigh Number
+    Ra = g * beta * delta_T * (2 * r_o)**3 / nu / alpha
+    
+    
+    # Incropera, Frank P.; DeWitt, David P. (2007). 
+    # Fundamentals of Heat and Mass Transfer (6th ed.). 
+    # Hoboken: Wiley. pp. 580, 515. ISBN 978-0-471-45728-2.
+    if Ra < 10e12:
+        Nu = (0.6 + 0.387 * Ra**(1/6)/(1 + (0.559 / Pr)**(9 / 16))**(8 / 27))**2
+    else:
+        raise ValueError('Ra is too high')
+    
+    # Conductivity of air
+    k_air  = CP.PropsSI('L', 'T', T_amb, 'P', P_amb, 'Air.mix')
+    
+    # convection coefficient
+    h_air = 0.25 * Nu * k_air / L
+    
+    # Ambient heat load (W)
+    Q_ambient = (T_mean_pod + 273.15 - T_amb) / (r_i**2 * (1 / 6 / k_eff + 
+                                                                 np.log(r_o / r_i) / 2 / k_ply +  
+                                                                 1 / 2 / r_o / h_air))
+    
+    # Compute VCRC heat load 
+    load = (Q_element - Q_ambient)
+    
+    # Compute compressor by subrtracting blower work. Blower work from test on 01/23 0.08 KWh after 60 min. 
+    W_comp = W_refrig - 0.08 * 1000 
+    
+    # Creae pandas dataframe for 
+    experimentalData = pd.DataFrame({'Ambient P (Pa)': P_amb, 'Ambient T (K)': T_amb, 'P (Pa)': [pressures], 
+                                     'T (K)': [temperatures], 'h (j/kg)':[cycleEnthalpy], 
+                                     's (j/kg K)': [cycleEntropy], 'Pod T Profile (K)': [radialProfile.values], 
+                                     'Pod T (K)': [T_mean_pod + 273.15], 'Air Speed Condenser (m/s)': windSpeed, 
+                                     'Heating Element Power (W)': Q_element, 'Ambient Heat Load (W)': Q_ambient, 
+                                     'Total Heat Load (W)': load, 'Compressor Work (W)': W_comp, 'file': file,})
 
     
 

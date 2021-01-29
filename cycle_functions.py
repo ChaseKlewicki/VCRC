@@ -30,11 +30,11 @@ def compr_func( inlet_state, RPM, P_ratio):
         
 
     #Param
-    eta_v = 1 -  0.225 * P_ratio        # Compression Ratio
-    Disp = 5.25E-6    #[m^3 per rev] #volume displacement
+    eta_v = 2 * (1 - 0.3125 * P_ratio) # Volumetric efficiency
+    Disp = 5.25E-6    # [m^3 per rev] #volume displacement
     
     if eta_v < 0:
-        raise ValueError('Compression ratio too high')
+        raise ValueError('Compression ratio too high: ' + str(P_ratio))
 
     h_g   = CP.PropsSI('H', 'P', P_e, 'Q', 1, 'R410a')
     if h_e_o < h_g:
@@ -43,8 +43,24 @@ def compr_func( inlet_state, RPM, P_ratio):
     rho = CP.PropsSI('D', 'P', P_e, 'H' ,h_e_o, 'R410a')
 
     m_dot = RPM / 60 * Disp * eta_v * rho
-
+    
     return m_dot
+
+
+def Gnielinski_Nu(Re, Pr):
+    # Correlation for Nusselt number in pipes
+    
+    # Check that non dimensional parameters are in valid range
+    if Pr < 0.5 or Pr > 2000 or Re < 3000 or Re > 5e6:
+        raise ValueError('Gnielinski Not Valid for Re or Pr Re: ' + str(Re) + 'Pr: ' + str(Pr))
+    
+    # assume smooth and use Petukhov correlation
+    f = (1.58 * np.log(Re) - 3.28)**-2
+    
+    # Compute nusselt number
+    Nu = (f / 2 * (Re -1000) * Pr) / (1 + 12.7 * np.sqrt(f / 2) * (Pr**(2/3) -1))
+    
+    return Nu
 
 
 def Circular_Duct_Nu(Re, Pr,strg):
@@ -80,10 +96,10 @@ def Circular_Duct_Nu(Re, Pr,strg):
             out1 = 3.66;
 
             if strg == 'c':
-                out2 = 0.023 * (Re[j]**(0.8)) * (Pr[j]**0.4) #Cold Side is being heated
+                out2 = 0.023 * (Re[j]**(0.8)) * (Pr[j]**0.4) # Cold Side is being heated
                 #Diddus and Boehler
             elif strg == 'h':
-                out2 = 0.023 * (Re[j]**(0.8)) * (Pr[j]**0.3) #Hot side being cooled
+                out2 = 0.023 * (Re[j]**(0.8)) * (Pr[j]**0.3) # Hot side being cooled
                 #Diddus and Boehler
             else:
                 raise NameError('String not recognized. need either' +
@@ -94,21 +110,20 @@ def Circular_Duct_Nu(Re, Pr,strg):
     return out
 
 
-def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
-
+def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_dot, subsys, T_air):
 
     if subsys == 'EVAP':
         
         # Geometric Characteristics
         
-        # Fin density (fins/m) [measured 19 fins per inch]
+        # Fin density (fins/m) [measured 20 fins per inch]
         Nf = 19 / 0.0254
 
         # Outside diameter of tubing (m) [measured .31"]
-        do = 0.31 *.0254
+        do = 5 / 16 * 0.0254
 
         # Inside diameter of tubing (m) [wall thickness estimated at 0.03"]
-        di = do - 2 * 0.03 *.0254
+        di = do - 2 * 0.03 * 0.0254
 
         # Transverse spacing between tubes (m) [measured 0.86"]
         xt = 0.86 * 0.0254
@@ -122,7 +137,7 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Overall Length (m) 
         L1 = (12.5) * 0.0254
         
-        # Overall depth (m) [measured 1 1/2"]
+        # Overall depth (m) [measured 1.75"]
         L2 = (1.5) * 0.0254
 
         # Overall height (m) 
@@ -155,8 +170,6 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Volume occupied by the heat exchanger (heat exchanger total volume) (m^3)
         V_a = L1 * L2 * L3
         
-        ## Outside geometric characteristics
-
         # Minimum free-flow area (Fundamentals of Heat Exchanger Design-Shah pg 573) 
 
         # 2a''
@@ -185,10 +198,12 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
 
         # Hydralic diameter (m)
         D_h_a = 4 * sigma_a / alpha_a
+        
+        # Mean velocity accross HX (m/s)
+        V_extr = V_dot / A_fr_a
 
-        #Need Adjusted airspeed based on obstructed area
-
-        adjspeed = V_extr / sigma_a
+        # Maximum velocity inside the HX (m/s)
+        V_max = V_extr / sigma_a
 
         #-------------------------------------------------------------------------#
         # Refrigerant Constants (R410a) 
@@ -226,11 +241,8 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # collar diameter (m)
         dc = do + 2 * delta
 
-        # fluid mean axial velocity (m/s)
-        u_m = adjspeed
-
         # Collar Reynolds number
-        Re_dc = rho_a * u_m * dc / mu_a
+        Re_dc = rho_a * V_max * dc / mu_a
 
         # fin pitch (m/fin)
         pf = 1 / Nf
@@ -248,47 +260,50 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         j = 0.086 * Re_dc ** C3 * Nr ** C4 * (pf / dc) ** C5 * (pf / D_h_a) ** C6 * (pf / xt) ** -0.93
 
         # h = JGCp/Pr^2/3
-        h_a = j * G_a * c_p_a / Pr_a**(2/3)
-        
-#         Nu_a  =  Circular_Duct_Nu([Re_a], [Pr_a], 'c')
-        
-#         h_a = Nu_a * k_a / D_h_a
+        h_a = j * V_max * c_p_a / Pr_a**(2/3)
+
+        # radius of tube including collar thickness
+        r_e = dc / 2
 
         # Single fin efficiency 
         # (Fundamentals of Heat Exchanger Design-Shah pg 606 eqn 9.14)
         m = (2 * h_a / k_pipe / delta) ** 0.5
+        
+        # geometric parameter for schmidt fin efficieny approx.
+        xm = xt / 2
 
-        l = xl / 2 - delta 
-
+        # equivelent fin radius
+        R_eq = r_e * (1.27 * xm / r_e * ((np.sqrt((xt / 2)**2 + xl**2) / 2) / xm - 0.3)**0.5)
+        
+        # Phi parameter for staggered arrangement
+        phi  = (R_eq / r_e - 1) * (1 + 0.35 * np.log(R_eq / r_e))
+        
         # Determine single fin efficiency
-        eta_f = np.tanh(m * l) / (m * l)
+        eta_f = np.tanh(m * r_e * phi) / (m * r_e * phi)
         
         #Overall Fin efficiency
         fin_eff = 1 - (1 - eta_f) * A_f / A_a
-        
-        addcnst = A_i * R_tw + A_i / (h_a * fin_eff * A_a)
 
         #HT-coefficient, gaseous, contribution from refrigerant side
         Re_g  =  4 * m_dot_g / (np.pi * di * mu_g)
         Pr_g  =  c_p_g * mu_g / k_g
-        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'h')  
+        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'c')  
         h_i_g =  k_g * Nu_g / di
 
 
         #HT-coefficient, liquid, contribution from refrigerant side
         Re_f  =  4 * m_dot_f / (np.pi * di * mu_f)
         Pr_f  =  c_p_f * mu_f / k_f
-        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'h')  
+        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'c')
         h_i_f =  k_f * Nu_f / di
 
+        
+        UA_g = (1 / (h_i_g * A_i) + R_tw + 1 / (fin_eff * h_a * A_a))**-1
+        UA_f = (1 / (h_i_f * A_i) + R_tw + 1 / (fin_eff * h_a * A_a))**-1
 
         #Local overall heat transfer coefficient
-        U_g = (1 / h_i_g + addcnst)**-1
-        U_f = (1 / h_i_f + addcnst)**-1
-
-        #Output UA
-        UA_g = U_g*A_i
-        UA_f = U_f*A_i
+        U_g = UA_g / A_i
+        U_f = UA_f / A_i
 
     elif subsys == 'COND':
 
@@ -297,11 +312,11 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Fin density (fins/m) [measured 19 fins per inch]
         Nf = 19 / 0.0254
 
-        # Outside diameter of tubing (m) [measured .21"]
-        do = 0.21 * 0.0254
+        # Outside diameter of tubing (m) [measured .25"]
+        do = 1 / 4 * 0.0254
 
         # Inside diameter of tubing (m) [wall thickness estimated at 0.03"]
-        di = do - 2 * 0.03 *.0254
+        di = do - 2 * 0.03 * .0254
 
         # Transverse spacing between tubes (m) [measured 1.048" - do]
         xt = 1.048 * 0.0254 - do
@@ -312,14 +327,14 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Fin thickness (m) [measured 0.004"]
         delta = 0.004 * 0.0254
 
-        # Overall Length (m) [measured 15 15/16"]
-        L1 = (15 + 15/16) * 0.0254
+        # Overall Length (m) [measured 15 + 15/16 ] (parially blocked by compressor!)
+        L1 = (9) * 0.0254
         
-        # Overall depth (m) [measured 1 5/16"]
-        L2 = (1 + 5/16) * 0.0254
+        # Overall depth (m) [measured 1.5]
+        L2 = (1.5) * 0.0254
 
-        # Overall height (m) [measured 12.5"]
-        L3 = 12.5 * 0.0254
+        # Overall height (m) [measured 12.5"] (parially blocked by compressor!)
+        L3 = (10) * 0.0254
         
         # Number of Rows 
         Nr = 3
@@ -327,9 +342,8 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Number of tubes. Two tube slots are empty
         Nt = 44 - 2
 
-
         #Interior (refrigerant side)
-        A_i     = np.pi * di * Nt * L1 # [m2]
+        A_i = np.pi * di * Nt * L1 # [m2]
 
         #Pipe Wall
         k_pipe = 385 # copper [W/m-K]
@@ -349,8 +363,6 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # Volume occupied by the heat exchanger (heat exchanger total volume) (m^3)
         V_a = L1 * L2 * L3
         
-        ## Outside geometric characteristics
-
         # Minimum free-flow area (Fundamentals of Heat Exchanger Design-Shah pg 573) 
 
         # 2a''
@@ -379,10 +391,12 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
 
         # Hydralic diameter (m)
         D_h_a = 4 * sigma_a / alpha_a
+        
+        # Mean velocity accross HX (m/s)
+        V_extr = 0.01 * V_dot / A_fr_a
 
-        #Need Adjusted airspeed based on obstructed area
-
-        adjspeed = V_extr / sigma_a
+        # Maximum velocity inside the HX (m/s)
+        V_max = V_extr / sigma_a 
 
         #-------------------------------------------------------------------------#
         # Refrigerant Constants (R410a) 
@@ -420,11 +434,8 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         # collar diameter (m)
         dc = do + 2 * delta
 
-        # fluid mean axial velocity (m/s)
-        u_m = adjspeed
-
         # Collar Reynolds number
-        Re_dc = rho_a * u_m * dc / mu_a
+        Re_dc = rho_a * V_max * dc / mu_a
 
         # fin pitch (m/fin)
         pf = 1 / Nf
@@ -442,58 +453,57 @@ def generate_HTCOEFF(P, m_dot_g, m_dot_f, V_extr, subsys, T_air):
         j = 0.086 * Re_dc ** C3 * Nr ** C4 * (pf / dc) ** C5 * (pf / D_h_a) ** C6 * (pf / xt) ** -0.93
 
         # h = JGCp/Pr^2/3
-        h_a = j * G_a * c_p_a / Pr_a ** (2/3)
+        h_a = j * V_max * c_p_a / Pr_a ** (2/3)
         
-#         Nu_a  =  Circular_Duct_Nu([Re_a], [Pr_a], 'h')
-        
-#         h_a = Nu_a * k_a / D_h_a
+        # radius of tube including collar thickness
+        r_e = dc / 2
 
         # Single fin efficiency 
         # (Fundamentals of Heat Exchanger Design-Shah pg 606 eqn 9.14)
         m = (2 * h_a / k_pipe / delta) ** 0.5
+        
+        # geometric parameter for schidt fin efficieny approx.
+        xm = xt / 2
 
-        l = xl / 2 - delta 
-
+        # equivelent fin radius
+        R_eq = r_e * (1.27 * xm / r_e * ((np.sqrt((xt / 2)**2 + xl**2) / 2) / xm - 0.3)**0.5)
+        
+        # Phi parameter for staggered arrangement
+        phi  = (R_eq / r_e - 1) * (1 + 0.35 * np.log(R_eq / r_e))
+        
         # Determine single fin efficiency
-        eta_f = np.tanh(m * l) / (m * l)
+        eta_f = np.tanh(m * r_e * phi) / (m * r_e * phi)
         
         #Overall Fin efficiency
-        fin_eff = 1 - (1 - eta_f) * A_f / A_a
-        
-        
-        addcnst = A_i * R_tw + A_i / (h_a * fin_eff * A_a)
+        fin_eff = (1 - (1 - eta_f) * A_f / A_a)
 
         #HT-coefficient, gaseous, contribution from refrigerant side
         Re_g  =  4 * m_dot_g / (np.pi * di * mu_g)
         Pr_g  =  c_p_g * mu_g / k_g
-        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'c')  
+        Nu_g  =  Circular_Duct_Nu([Re_g], [Pr_g], 'h')  
         h_i_g =  k_g * Nu_g / di
 
 
         #HT-coefficient, liquid, contribution from refrigerant side
         Re_f  =  4 * m_dot_f / (np.pi * di * mu_f)
         Pr_f  =  c_p_f * mu_f / k_f
-        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'c')  
+        Nu_f  =  Circular_Duct_Nu([Re_f], [Pr_f], 'h')
         h_i_f =  k_f * Nu_f / di
 
 
+        UA_g = (1 / (h_i_g * A_i) + R_tw + 1 / (fin_eff * h_a * A_a))**-1
+        UA_f = (1 / (h_i_f * A_i) + R_tw + 1 / (fin_eff * h_a * A_a))**-1
+
         #Local overall heat transfer coefficient
-        U_g = ( 1 / h_i_g + addcnst )**-1;
-        U_f = ( 1 / h_i_f + addcnst )**-1;
-
-
-        #Output UA
-        UA_g = U_g * A_i
-        UA_f = U_f * A_i
+        U_g = UA_g / A_i
+        U_f = UA_f / A_i
 
     else:
         raise ValueError('Subsys must be "COND" or "EVAP"')
-
-
     return [UA_g, UA_f]
 
 
-def Condenser_Proc(input_state, strarg, flowrate, T_amb, RPM):
+def Condenser_Proc(input_state, strarg, flowrate, T_amb, P_drop, RPM):
 
 
     # Input state must be a row vector containing pressure 
@@ -502,14 +512,6 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, RPM):
     
     # Compute fan work and volumetric flow rate based on fan rpm
     [V_dot, W_fan] = fan(RPM)
-    
-    # Overall Length (m) [measured 15 15/16"]
-    L1 = (15 + 15/16) * 0.0254
-
-    # Overall height (m) [measured 12.5"]
-    L3 = 12.5 * 0.0254
-    
-    airspeed = V_dot / L1 / L3  #[m/s]
     
     #Initialize Vars
     #----------------------
@@ -575,7 +577,8 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, RPM):
     #
 
     [UA_1, UA_3] = generate_HTCOEFF( P_in, flowrate, flowrate, 
-                                       airspeed, 'COND', T_amb)
+                                       V_dot, 'COND', T_amb)
+    
 
     #Temporary
     UA_g = UA_1
@@ -584,12 +587,12 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, RPM):
     #Properties
     c_p_g = 0.5 * (CP.PropsSI('C', 'P', P_in, 'H', h_in, 'R410a') + 
                    CP.PropsSI('C', 'P', P_in, 'Q', 1, 'R410a'))
+    
     c_p_f = CP.PropsSI('C', 'P', P_in, 'Q', 0, 'R410a')
 
     rho_g   = CP.PropsSI('D', 'P', P_in, 'Q', 1, 'R410a')
     rho_f   = CP.PropsSI('D', 'P', P_in, 'Q', 0, 'R410a')
-    #rho_fg  = rho_f - rho_g; or rho_g - rho_f?
-    rho_rat = rho_g/rho_f
+    rho_rat = rho_g / rho_f
 
     #Vol Void Frac
     gamma = 1 / (1 - rho_rat) + rho_rat / (rho_rat - 1)**2 * np.log( rho_rat )
@@ -609,8 +612,7 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, RPM):
     # Check that ambiet temperature is above the saturation 
     # and inlet temperature otherwise go straight to subcooled
     if (T_amb - T_in) < 0  and (T_amb - T_sat) < 0:
-        dz_1 = c_p_g  * flowrate / UA_1 * np.log((T_amb - T_in) / 
-                                                 (T_amb - T_sat))
+        dz_1 = c_p_g  * flowrate / UA_1 * - np.log((T_sat - T_amb) / (T_in - T_amb))
 
         #Add exception if superheated phase takes up the
         #entire HX domain
@@ -694,9 +696,9 @@ def Condenser_Proc(input_state, strarg, flowrate, T_amb, RPM):
     h[3] = h_out;
     
     # Pressure drop determined empirically applied linearly
-    P[1] = P[0] - 5e4 * dz_1
-    P[2] = P[1] - 5e4 * dz_2
-    P[3] = P[2] - 5e4 * (1 - dz_2 + dz_1)
+    P[1] = P[0] - P_drop * dz_1
+    P[2] = P[1] - P_drop * dz_2
+    P[3] = P[2] - P_drop * (1 - dz_2 + dz_1)
     #-----------------
 
 
@@ -732,27 +734,19 @@ def valve_func( CA_param, P_up, P_down, x):
 
 
 def capillary_tube_func(P_in, h_in, T_in):
+    # Mass flow rate correlation for helically coiled capillary tubes Rasti et al.
+  
+    # Diameter of capillary tube coil
+    d_coil = 2 * 0.0254
     
-    d_coil = 5 * 0.0254
     # 1/16" in OD copper tubing, .02" wall thickness
-#     D_c = sym.Symbol('D_c')
-    D_c = 0.01525 * 0.0254
+    D_c = 0.021 * 0.0254
     
-    # length of capillary tube.  in diameter coil, 4 loops, 2 tubes.
-#     L_c = sym.Symbol('L_c')
+    # length of capillary tube. 4 loops
     L_c = d_coil * np.pi  * 4
 
     # Saturation Pressure
     P_sat = CP.PropsSI('P', 'T', T_in, 'Q', 0, 'R410a')
-    
-    # Critical Pressure
-    P_crit = CP.PropsSI('PCRIT', 'R410a')
-    
-    # Critical Temperature
-    T_crit = CP.PropsSI('TCRIT', 'R410a')
-    
-    # delta subcool
-    T_SC = CP.PropsSI('T', 'P', P_in, 'Q', 0, 'R410a') - T_in
 
     # Dynamic viscosity of r-410a fluid at inlet temperature
     mu_f = CP.PropsSI('V', 'T', T_in, 'Q', 0, 'R410a')
@@ -765,12 +759,6 @@ def capillary_tube_func(P_in, h_in, T_in):
 
     # Density of r-410a vapor at inlet temperature
     rho_g = CP.PropsSI('D', 'T', T_in, 'Q', 1, 'R410a')
-    
-    # kinematic viscosity of r-410a fluid at inlet temperature
-    nu_f = mu_f / rho_f
-
-    # kinematic viscosity of r-410a vapor at inlet temperature
-    nu_g = mu_g / rho_g
 
     # Specific volume of r-410a fluid at inlet temperature
     v_f = 1 / rho_f
@@ -781,42 +769,38 @@ def capillary_tube_func(P_in, h_in, T_in):
     # Saturated liquid surface tension of r-410a vapor at inlet temperature
     sigma = CP.PropsSI('I', 'T', T_in, 'Q', 0, 'R410a')
 
-    # Enthalpy of vaporization at inlet temperature
-    h_fgc = (CP.PropsSI('H', 'T', T_in, 'Q', 1, 'R410a') - 
-             CP.PropsSI('H', 'T', T_in, 'Q', 0, 'R410a'))
-
     # Enthalpy of fluid at inlet pressure
     h_f = CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a')
 
     # Enthalpy of vaporization at inlet pressure
     h_fg = (CP.PropsSI('H', 'P', P_in, 'Q', 1, 'R410a') - 
              CP.PropsSI('H', 'P', P_in, 'Q', 0, 'R410a'))
-    
-    C_pf = CP.PropsSI('C', 'P', P_in, 'Q', 0, 'R410a')
 
     # A generalized continuous empirical correlation for predicting refrigerant
     # mass flow rates through adiabatic capillary tubes
 
-    pi_1 = (P_in - P_sat) / P_crit
-    pi_2 = T_SC / T_crit
-    pi_3 = L_c / d_coil
-    pi_4 = (nu_g - nu_f) / nu_g
-    pi_5 = sigma / D_c / P_in
-    pi_6 = rho_f * h_fg / P_sat
+    pi_1 = L_c / D_c
+    pi_2 = D_c**2 * h_fg / v_f**2 / mu_f**2
+    pi_3 = D_c * sigma / v_f / mu_f**2
+    pi_4 = D_c**2 * P_in / v_f / mu_f**2
+    pi_5 = 1 + (h_in - h_f) / h_fg
+    pi_6 = v_g / v_f
+    pi_7 = (mu_f - mu_g) / mu_g
+    pi_9 = 1 + L_c / d_coil
     
-    if T_SC < 0:
-        warnings.warn('Warning cavitation in expansion valve')
-        m_dot = 0
-    else:
-        pi_7 = (0.0081 * pi_1**0.1046 * pi_2**0.0182 * pi_3**-0.3903 * 
-            pi_4**-0.8836 * pi_5**-0.1396 *pi_6**0.6712)
+    if h_in < h_f: # Subcooled
+        c_5 = 0.6436
+    else: # Two Phase
+        c_5 = -1.971
         
-        m_dot = pi_7 * D_c**2 * np.sqrt(P_in * rho_f)
+    pi_8 = 150.26 * pi_1**-0.5708 * pi_2**-1.4636 * pi_4**1.953 * pi_5**c_5 * pi_6**1.4181 * pi_9**-0.0158
+        
+    m_dot = 2 * pi_8 * D_c * mu_f
     
     return m_dot 
 
 
-def Evap_Proc(input_state, flowrate, T_pod, RPM):
+def Evap_Proc(input_state, flowrate, T_pod, P_drop, RPM):
 
 
     # Input state must be a row vector containing pressure 
@@ -825,14 +809,6 @@ def Evap_Proc(input_state, flowrate, T_pod, RPM):
 
     # Compute fan work and volumetric flow rate based on fan rpm
     [V_dot, W_fan] = fan(RPM)
-    
-    # Evaporator Overall Length (m) 
-    L1 = (12.5) * 0.0254
-
-    # Evaporator Overall height (m) 
-    L3 = 8.5 * 0.0254
-    
-    airspeed = V_dot / L1 / L3  #[m/s]
 
     #
     # Initialize Vars
@@ -864,7 +840,7 @@ def Evap_Proc(input_state, flowrate, T_pod, RPM):
     # Calculate Vars
     #
 
-    [UA_1, UA_3] = generate_HTCOEFF( P_in, flowrate, flowrate, airspeed, 'EVAP', T_pod);
+    [UA_1, UA_3] = generate_HTCOEFF( P_in, flowrate, flowrate, V_dot, 'EVAP', T_pod);
 
     #Temporary
     UA_g = UA_3;
@@ -958,7 +934,7 @@ def Evap_Proc(input_state, flowrate, T_pod, RPM):
                                 (rho_rat * (x_in - 1) - x_in))
                         ]
 
-        b = fsolve( f, [gamma, h_fg/2])
+        b = fsolve( f, [gamma, h_fg / 2])
         #gamma = b(1)
         dh_2  = b[1]
 
@@ -1003,9 +979,9 @@ def Evap_Proc(input_state, flowrate, T_pod, RPM):
 
     # assign output
     # Pressure drop determined empirically applied linearly
-    P[1] = P[0] - 5e4 * (dz_1)
-    P[2] = P[1] - 5e4 * (dz_2)
-    P[3] = P[2] - 5e4 * (1 - dz_2 + dz_1)
+    P[1] = P[0] - P_drop * (dz_1)
+    P[2] = P[1] - P_drop * (dz_2)
+    P[3] = P[2] - P_drop * (1 - dz_2 + dz_1)
     #-----------------------------------
     abcissa[1] = abcissa[0] + dz_1
     abcissa[2] = abcissa[1] + dz_2
@@ -1021,7 +997,7 @@ def Evap_Proc(input_state, flowrate, T_pod, RPM):
 def fan(RPM):
     # Fan performance based on ebmpabst RER 190-39/14/2TDLOU fan
     
-    W = RPM**3 * 57.1 / 2900**3 # W
+    W = 57.1 * (RPM / 2900)**3 # W
     V_dot = RPM * 376.7 / 2900 * 0.00047194745 # m^3/s
     
     return [V_dot, W]

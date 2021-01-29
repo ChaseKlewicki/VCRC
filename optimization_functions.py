@@ -21,15 +21,15 @@ def make_cycle(Vars, Inputs, Param):
     # ----------------------------------------------#
     #==------ Inputs ------==#
     
-    Q_load = Inputs[0] # W
-    T_amb  = Inputs[1] # K
-    T_pod  = Inputs[2] # K
-    U_cond = Inputs[3] # m/s
+    T_amb  = Inputs[0] # K
+    T_pod  = Inputs[1] # K
+    Q_load = Inputs[2] # W
     
     #----------------------------------------------#
     #==------ Param -------==#
     RPM    = Param[0]
-    
+    RPM_cond = Param[1]
+    RPM_evap = Param[2]
     
     #----------------------------------------------#
     #==-- Init. Outputs  --==#
@@ -50,10 +50,10 @@ def make_cycle(Vars, Inputs, Param):
     #=========================================================================#
 
     # pressure drop accross evaporator (Pa)
-    delta_P_e = 5e4
+    delta_P_e = 0
     
     # pressure drop accross condenser (Pa)
-    delta_P_c = 5e4
+    delta_P_c = 0
     
     P[0] = P_e - delta_P_e # Pressure drop accross evap determined empirically
     
@@ -74,23 +74,17 @@ def make_cycle(Vars, Inputs, Param):
     
     # Isentropic Ratio
     eta_is = 2.9
-    
-    if eta_is < 1:
-        print([RPM, P_c, P_e])
    
     h[1] = h[0] + (CP.PropsSI('H', 'P', P_c, 'S', s[0], 'R410a') - h[0]) / eta_is
     s[1] = CP.PropsSI('S', 'P', P[1], 'H', h[1], 'R410a')
 
     STATE = [P[1], h[1]]
     
-    
     #   calculate condenser
-    [P[1:5], T[1:5], h[1:5], s[1:5], abscissa[1:5]] = Condenser_Proc( STATE, 
-                                                             'h', m_dot_s, T_amb, U_cond)
-
+    [P[1:5], T[1:5], h[1:5], s[1:5], abscissa[1:5], W_fan_c] = Condenser_Proc( STATE, 
+                                                             'h', m_dot_s, T_amb, delta_P_c, RPM_cond)
 
     #   calculate expansion
-#     m_dot_v = valve_func( CA, P_c, P_e, valve )
     m_dot_v = capillary_tube_func(P[4], h[4], T[4])
     
     P[5] = P_e
@@ -101,7 +95,7 @@ def make_cycle(Vars, Inputs, Param):
     
 
     #   calculate evap
-    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9]] = Evap_Proc(STATE, m_dot_s, T_pod)
+    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9], W_fan_e] = Evap_Proc(STATE, m_dot_s, T_pod, delta_P_e, RPM_evap)
 
     abscissa[5:9] = abscissa[5:9] + abscissa[4]
 
@@ -120,27 +114,31 @@ def make_cycle(Vars, Inputs, Param):
     Q_L   = Q_evap
     Q_H   = m_dot_v * (h[1] - h[4])
     
+    # Combined efficiency (Regression determined empirically)
+    eta_comb = 1 / (P_c / P_e * 31.97243192 - 76.62120721)
+    
     # Compute compressor work based on isentropic, adiabatic compressor
-    W     = m_dot_s * (CP.PropsSI('H', 'P', P_c, 'S', s[0], 'R410a') - h[0])
+    W_comp     = m_dot_s * (h[1] - h[0]) / eta_comb
 
+    # Compute Coefficient of system performance
+    COSP = Q_L / (W_comp + W_fan_c + W_fan_e)
 
-
-    return [P, T, h, s, abscissa, m_dot, Q_L, Q_H, W, Deficit]
+    return [P, T, h, s, abscissa, m_dot, Q_L, Q_H, W_comp, W_fan_c, W_fan_e, COSP, Deficit]
 
 
 def adjust_cycle_fmin(Vars, Inputs, Param):
 
     assert(np.size(Vars) == 3)
 
-    T_amb  = Inputs[1]
-    T_pod  = Inputs[2]
+    T_amb  = Inputs[0]
+    T_pod  = Inputs[1]
 
     #
     #
     # Make Objective Function
 
     def objective(Vars):
-        [_, _, _, _, _, _, _, _, _, Obj] = make_cycle(Vars, Inputs, Param)
+        [_, _, _, _, _, _, _, _, _, _, _, _, Obj] = make_cycle(Vars, Inputs, Param)
         
         Obj = 1000 * np.linalg.norm(Obj)
         
@@ -154,15 +152,12 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
         c = (T_pod - CP.PropsSI('T', 'P', Vars[1], 'Q', 0, 'R410a')) - Vars[2] 
         return c
 
-    nonLinear = NonlinearConstraint(nonlcon, 0.1, np.inf)
+    nonLinear = NonlinearConstraint(nonlcon, 0, np.inf)
     
-    linear = LinearConstraint(np.identity(len(Vars)),
-                              [CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 200e3, 0.1], # Lower Bounds
-                              [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a'), 30] # Upper Bounds
+    linear = LinearConstraint(np.vstack([np.identity(len(Vars)), [1, -3.2, 0]]),
+                              [CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 200e3, 0.1, -np.inf], # Lower Bounds
+                              [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a'), 30, 0] # Upper Bounds
                              )
-    
-    #Options
-    #options = optimoptions('fmincon','Display','iter','Algorithm','sqp');
 
     #
     # Solve the problem.
@@ -177,7 +172,7 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
     # ---
     if res['success']:
         Vars = res.x
-        [_, _, _, _, _, _, _, _, _, Deficit] = make_cycle(Vars, Inputs, Param)
+        [_, _, _, _, _, _, _, _, _, _, _, _, Deficit] = make_cycle(Vars, Inputs, Param)
     else:
         Deficit = [1, 1, 1]
 
@@ -186,18 +181,19 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
 
 def solve_cycle_shotgun(Inputs, Param):
     
-    T_amb  = Inputs[1] # K
-    T_pod  = Inputs[2] # K
+    T_amb  = Inputs[0] # K
+    T_pod  = Inputs[1] # K
     
     SPREAD = 4;
 
-    #Var Extents
-    lb = [CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a'), 400e3]
-    ub = [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a')]
+    # evaporator bounds
+    lb = [200e3, CP.PropsSI('P', 'T', T_amb, 'Q', 1, 'R410a')] # lower bound for evap and cond Pressures
+    ub = [CP.PropsSI('P', 'T', T_pod, 'Q', 0, 'R410a'), 3.2] # upper bound for evap and compression ratio bound for cond
 
     #Starting points
-    P_c   = lb[0] + (ub[0] - lb[0]) * np.linspace( 0.1, 0.9, SPREAD)
-    P_e   = lb[1] + (ub[1] - lb[1]) * np.linspace( 0.1, 0.9, SPREAD)
+    P_e   = lb[0] + (ub[0] - lb[0]) * np.linspace( 0.1, 0.9, SPREAD)
+    P_c   = P_e + (P_e * ub[1] - lb[1]) * np.linspace( 0.1, 0.9, SPREAD)
+    
     T_SH  = .5
 
     # Create list of possible combinations of pressures
@@ -225,9 +221,9 @@ def solve_cycle_shotgun(Inputs, Param):
                       str(normDeficit[normDeficit == min(normDeficit)]))
 
     #Calc
-    [ P, T, h, s, abcissa, m_dot, Q_L, Q_H, W, Deficit] = make_cycle(Vars, 
-                                                                     Inputs,
-                                                                     Param)
+    [ P, T, h, s, abcissa, m_dot, Q_L, Q_H, W_comp, W_fan_c, W_fan_e, COSP, Deficit] = make_cycle(Vars, 
+                                                                                             Inputs,
+                                                                                             Param)
     Props = [P, T, h, s, abcissa]
         
-    return [Props, m_dot, Q_L, Q_H, W, Deficit, converged]
+    return [Props, m_dot, Q_L, Q_H, W_comp, W_fan_c, W_fan_e, COSP, Deficit, converged]
