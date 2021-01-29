@@ -144,12 +144,19 @@ def experimental_analysis_tunnel(file, P_amb, Input_Q):
     load = (Input_Q - ambient_Q)
     
     # Creae pandas dataframe for 
-    experimentalData = pd.DataFrame({'Ambient P (Pa)': P_amb, 'Ambient T (K)': T_amb, 'P (Pa)': [pressures], 
-                                     'T (K)': [temperatures], 'h (j/kg)':[cycleEnthalpy], 
-                                     's (j/kg K)': [cycleEntropy], 'Pod T Profile (K)': [radialProfile.values], 
-                                     'Pod T (K)': [T_mean_pod + 273.15], 'Wind Tunnel Velocity (m/s)': windSpeed, 
-                                     'Heating Element Power (W)': Input_Q, 'Ambient Heat Load (W)': ambient_Q, 
-                                     'Total Heat Load (W)': load, 'file': file,})
+    experimentalData = pd.DataFrame({'Ambient P (Pa)': P_amb, 
+                                     'Ambient T (K)': T_amb, 
+                                     'P (Pa)': [pressures], 
+                                     'T (K)': [temperatures], 
+                                     'h (j/kg)':[cycleEnthalpy], 
+                                     's (j/kg K)': [cycleEntropy], 
+                                     'Pod T Profile (K)': [radialProfile.values], 
+                                     'Pod T (K)': [T_mean_pod + 273.15], 
+                                     'Wind Tunnel Velocity (m/s)': windSpeed, 
+                                     'Heating Element Power (W)': Input_Q, 
+                                     'Ambient Heat Load (W)': ambient_Q, 
+                                     'Total Heat Load (W)': load, 
+                                     'file': file,})
 
     
 
@@ -324,13 +331,29 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     # Compute compressor by subrtracting blower work. Blower work from test on 01/23 0.08 KWh after 60 min. 
     W_comp = W_refrig - 0.08 * 1000 
     
+    # COSP (Condesner fan work from test on 01/23 0.04 Kwh after 60 mins)
+    COSP = load / (W_refrig + 0.04 * 1000)
+    
+    # COP 
+    COP = load / W_comp
+    
     # Creae pandas dataframe for 
-    experimentalData = pd.DataFrame({'Ambient P (Pa)': P_amb, 'Ambient T (K)': T_amb, 'P (Pa)': [pressures], 
-                                     'T (K)': [temperatures], 'h (j/kg)':[cycleEnthalpy], 
-                                     's (j/kg K)': [cycleEntropy], 'Pod T Profile (K)': [radialProfile.values], 
-                                     'Pod T (K)': [T_mean_pod + 273.15], 'Air Speed Condenser (m/s)': windSpeed, 
-                                     'Heating Element Power (W)': Q_element, 'Ambient Heat Load (W)': Q_ambient, 
-                                     'Total Heat Load (W)': load, 'Compressor Work (W)': W_comp, 'file': file,})
+    experimentalData = pd.DataFrame({'Ambient P (Pa)': P_amb, 
+                                     'Ambient T (K)': T_amb, 
+                                     'P (Pa)': [pressures], 
+                                     'T (K)': [temperatures], 
+                                     'h (j/kg)':[cycleEnthalpy], 
+                                     's (j/kg K)': [cycleEntropy], 
+                                     'Pod T Profile (K)': [radialProfile.values], 
+                                     'Pod T (K)': [T_mean_pod + 273.15], 
+                                     'Air Speed Condenser (m/s)': windSpeed, 
+                                     'Heating Element Power (W)': Q_element, 
+                                     'Ambient Heat Load (W)': Q_ambient, 
+                                     'Total Heat Load (W)': load, 
+                                     'Compressor Work (W)': W_comp, 
+                                     'COSP': COSP,
+                                     'COP': COP,
+                                     'file': file,})
 
     
 
