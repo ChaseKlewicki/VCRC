@@ -254,6 +254,7 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     # Model pod as cylindrical prism 
     # inside radius [7.75"]
     r_i = 7.75 * 0.0254
+    
     # outside radius [8.25"]
     r_o = 8.25 * 0.0254
     
@@ -265,9 +266,6 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     
     # length of prototype (m)
     L = 65 * 0.0254 / 2
-    
-    # Free stream velocity (m/s)
-    U = windSpeed
     
     # film temperature (K)
     T_f = (radialProfile[2] + 273.15 + T_amb) / 2
@@ -313,16 +311,13 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
         Nu = (0.6 + 0.387 * Ra**(1/6)/(1 + (0.559 / Pr)**(9 / 16))**(8 / 27))**2
     else:
         raise ValueError('Ra is too high')
-    
-    # Conductivity of air
-    k_air  = CP.PropsSI('L', 'T', T_amb, 'P', P_amb, 'Air.mix')
+
     
     # convection coefficient
-    h_air = 0.25 * Nu * k_air / L
+    h_air =  Nu * k / (2 * r_o)
     
     # Ambient heat load (W)
-    Q_ambient = (T_mean_pod + 273.15 - T_amb) / (r_i**2 * (1 / 6 / k_eff + 
-                                                                 np.log(r_o / r_i) / 2 / k_ply +  
+    Q_ambient = (radialProfile[2] + 273.15 - T_amb) / (r_i**2 * (np.log(r_o / r_i) / 2 / k_ply +  
                                                                  1 / 2 / r_o / h_air))
     
     # Compute VCRC heat load 
