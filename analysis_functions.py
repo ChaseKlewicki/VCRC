@@ -251,21 +251,25 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
             cycleEntropy[ind] = CP.PropsSI('S', 'P', pressures[ind], 'Q', x, fluid)
     
     
-    # Model pod as cylindrical prism 
-    # inside radius [7.75"]
-    r_i = 7.75 * 0.0254
+    # Model pod as rectangular prism
+    # Incropera, Frank P.; DeWitt, David P. (2007). 
+    # Fundamentals of Heat and Mass Transfer (6th ed.). 
+    # Hoboken: Wiley. pp. 578, ISBN 978-0-471-45728-2.
     
-    # outside radius [8.25"]
-    r_o = 8.25 * 0.0254
+    # Length of prototype (m) [76.5"]
+    L = 76.5 * 0.0254
+    
+    # width of prototype (m) [15 13/16"]
+    W = (15 + 13/16) * 0.0254
+    
+    # Height of prototype body (m) [15 13/16"]
+    H = W
+    
+    # Thickness of plywood (m) [13/16"]
+    t = 13/16 * 0.0254
     
     # thermal conductivity of plywood (W/mk)
     k_ply = 0.13
-    
-    # effective thermal conductivity of interior convection (W/mk)
-    k_eff = 4.91
-    
-    # length of prototype (m)
-    L = 65 * 0.0254 / 2
     
     # film temperature (K)
     T_f = (radialProfile[2] + 273.15 + T_amb) / 2
@@ -300,25 +304,45 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     # Thermal diffusivity (m^2/s)
     alpha = k / rho / C_p
     
-    # Raleigh Number
-    Ra = g * beta * delta_T * (2 * r_o)**3 / nu / alpha
+    # Raleigh Number sides
+    Ra_s = g * beta * delta_T * (H)**3 / nu / alpha
+    
+    # Raleigh Number top 
+    Ra_t = g * beta * delta_T * (W / 2)**3 / nu / alpha
+    
+    # Raleigh Number bottom (same as top)
+    Ra_b = g * beta * delta_T * (W / 2)**3 / nu / alpha
     
     
-    # Incropera, Frank P.; DeWitt, David P. (2007). 
-    # Fundamentals of Heat and Mass Transfer (6th ed.). 
-    # Hoboken: Wiley. pp. 580, 515. ISBN 978-0-471-45728-2.
-    if Ra < 10e12:
-        Nu = (0.6 + 0.387 * Ra**(1/6)/(1 + (0.559 / Pr)**(9 / 16))**(8 / 27))**2
+    if Ra_s < 1e9:
+        Nu_s = (0.68 + 0.67 * Ra_s**(1/4) / (1 + (0.492 / Pr)**(9/16))**(4/9))
     else:
-        raise ValueError('Ra is too high')
+        raise ValueError('Ra sides is not within range ' + str(Ra_s))
+        
+    if Ra_t < 1e11 and Ra_t > 1e7:
+        Nu_t = 0.15 * Ra_t**(1/3)
+    elif Ra_t < 1e7 and Ra_t > 1e4:
+        Nu_t = 0.54 * Ra_t**(1/4)
+    else:
+        raise ValueError('Ra top is not within range ' + str(Ra_t))  
+        
+    if Ra_b < 1e10 and Ra_b > 1e5:
+        Nu_b = 0.27 * Ra_b**(1/4)
+    else:
+        raise ValueError('Ra bottom is not within range ' + str(Ra_b))
 
     
     # convection coefficient
-    h_air =  Nu * k / (2 * r_o)
+    h_s =  Nu_s * k / (H)
+    h_t =  Nu_t * k / (W / 2)
+    h_b =  Nu_b * k / (W / 2)
     
+    # Ambient heat load per meter (W/m)
+    q_prime = (T_mean_pod + 273.15 - T_amb) * (2 * H / (t / k_ply + 1 / h_s) + 
+                                                     W / (t / k_ply + 1 / h_t) +
+                                                     W / (t / k_ply + 1 / h_b))
     # Ambient heat load (W)
-    Q_ambient = (radialProfile[2] + 273.15 - T_amb) / (r_i**2 * (np.log(r_o / r_i) / 2 / k_ply +  
-                                                                 1 / 2 / r_o / h_air))
+    Q_ambient = q_prime * L
     
     # Compute VCRC heat load 
     load = (Q_element - Q_ambient)
