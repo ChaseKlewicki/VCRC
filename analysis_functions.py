@@ -40,7 +40,7 @@ def experimental_analysis_tunnel(file, P_amb, Input_Q):
 
     # Compute wind speed
     windSpeed = np.sqrt(refrigData['Pitot Tube (Torr)'].abs(
-    ) * 133.322 * 2 / CP.PropsSI('D', 'T', T_amb, 'P', P_amb, 'Air.mix')).mean()
+    ) * 133.322 * 2 / CP.PropsSI('D', 'T', T_amb, 'P', P_amb, 'air')).mean()
 
     # Compute mean steady state radial temperatures from last 600 seconds
     radialProfile = refrigData[['Thermocouple 2 (C)', 'Thermocouple 4 (C) ', 'Thermocouple 7 (C)']][-600:-1].mean()
@@ -74,21 +74,21 @@ def experimental_analysis_tunnel(file, P_amb, Input_Q):
     temperatures[3] = temperatures[3] + 0.02 * (temperatures[3] - T_mean_pod-273.15)
     
     # Look up saturated enthalpy and entropy
-    fluid = 'R410a'
+    refrigerant = 'R410a'
 
 
-    cycleEnthalpy = CP.PropsSI('H', 'P', pressures, 'T', temperatures, fluid)
+    cycleEnthalpy = CP.PropsSI('H', 'P', pressures, 'T', temperatures, refrigerant)
 
-    cycleEntropy = CP.PropsSI('S', 'P', pressures, 'T', temperatures, fluid)
+    cycleEntropy = CP.PropsSI('S', 'P', pressures, 'T', temperatures, refrigerant)
 
     # Compute vapor quality if pre-evap temperature below saturation temp
     if np.isinf(cycleEnthalpy[3]):
-        x = (pressures[3] - CP.PropsSI('P', 'T', temperatures[3], 'Q', 1, fluid)) / \
-        (CP.PropsSI('P', 'T', temperatures[3], 'Q', 0, fluid) - 
-         CP.PropsSI('P', 'T', temperatures[3], 'Q', 1, fluid))
+        x = (pressures[3] - CP.PropsSI('P', 'T', temperatures[3], 'Q', 1, refrigerant)) / \
+        (CP.PropsSI('P', 'T', temperatures[3], 'Q', 0, refrigerant) - 
+         CP.PropsSI('P', 'T', temperatures[3], 'Q', 1, refrigerant))
         
-        cycleEnthalpy[3] = CP.PropsSI('H', 'P', pressures[3], 'Q', x, fluid)
-        cycleEntropy[3] = CP.PropsSI('S', 'P', pressures[3], 'Q', x, fluid)
+        cycleEnthalpy[3] = CP.PropsSI('H', 'P', pressures[3], 'Q', x, refrigerant)
+        cycleEntropy[3] = CP.PropsSI('S', 'P', pressures[3], 'Q', x, refrigerant)
     
     
     # Model pod as cylindrical prism 
@@ -110,13 +110,13 @@ def experimental_analysis_tunnel(file, P_amb, Input_Q):
     U = windSpeed
     
     # absolute viscosity of air (Pa*s)
-    mu = CP.PropsSI('V', 'T', T_amb, 'P', P_amb, 'Air.mix')
+    mu = CP.PropsSI('V', 'T', T_amb, 'P', P_amb, 'air')
     
     # Density of air (kg/m^3) 
-    rho = CP.PropsSI('D', 'T', T_amb, 'P', P_amb, 'Air.mix')
+    rho = CP.PropsSI('D', 'T', T_amb, 'P', P_amb, 'air')
     
     # Prandtl number of air
-    Pr = CP.PropsSI('Prandtl', 'T', T_amb, 'P', P_amb, 'Air.mix')
+    Pr = CP.PropsSI('Prandtl', 'T', T_amb, 'P', P_amb, 'air')
     
     # Reynolds number outside 
     Re = rho * U * L / mu
@@ -132,7 +132,7 @@ def experimental_analysis_tunnel(file, P_amb, Input_Q):
     else:
         raise ValueError('Re is turbulent')
     # Conductivity of air
-    k_air  = CP.PropsSI('L', 'T', T_amb, 'P', P_amb, 'Air.mix')
+    k_air  = CP.PropsSI('L', 'T', T_amb, 'P', P_amb, 'air')
     
     # convection coefficient
     h_air = Nu * k_air / L
@@ -195,7 +195,7 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
 
     # Compute air speed measured behind condenser (m/s) [not very accurate]
     windSpeed = np.sqrt(refrigData['Pitot Tube (Torr)'].abs(
-    ) * 133.322 * 2 / CP.PropsSI('D', 'T', T_amb, 'P', P_amb, 'Air.mix')).mean()
+    ) * 133.322 * 2 / CP.PropsSI('D', 'T', T_amb, 'P', P_amb, 'air')).mean()
 
     # Compute mean steady state radial temperatures from last 600 seconds
     radialProfile = refrigData[['Thermocouple 2 (C)', 'Thermocouple 4 (C) ', 'Thermocouple 7 (C)']][-600:-1].mean()
@@ -204,11 +204,10 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     locations = np.array([1.5, 7.5, 16.5])
 
     # Compute area for each thermocouple
-    area = (np.array([4, 12, 18]) / 100)**2 - (np.array([0, 4, 12]) / 100)**2
+    dr = locations / 100 - np.array([0, locations[0], locations[1]]) / 100
 
     # compute mean internal temperature
-    T_mean_pod = (radialProfile*area).sum() / \
-        (locations[-1] / 100 + 1.5 / 100)**2
+    T_mean_pod = np.dot(radialProfile, dr) / (locations [2] / 100)
 
 
     # Calculate steady state mean pressures and temperatures
@@ -231,24 +230,24 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     temperatures[3] = temperatures[3] + 0.02 * (temperatures[3] - T_mean_pod-273.15)
     
     # Look up saturated enthalpy and entropy
-    fluid = 'R410a'
+    refrigerant = 'R410a'
 
     #Compute Enthalpy and entropy from P and T
-    cycleEnthalpy = CP.PropsSI('H', 'P', pressures, 'T', temperatures, fluid)
+    cycleEnthalpy = CP.PropsSI('H', 'P', pressures, 'T', temperatures, refrigerant)
 
-    cycleEntropy = CP.PropsSI('S', 'P', pressures, 'T', temperatures, fluid)
+    cycleEntropy = CP.PropsSI('S', 'P', pressures, 'T', temperatures, refrigerant)
 
     # Check if any positions are two phase:
     TP = np.isinf(cycleEnthalpy)
     
     for ind, point in enumerate(TP):
         if point:
-            x = (pressures[ind] - CP.PropsSI('P', 'T', temperatures[ind], 'Q', 1, fluid)) / \
-            (CP.PropsSI('P', 'T', temperatures[ind], 'Q', 0, fluid) - 
-             CP.PropsSI('P', 'T', temperatures[ind], 'Q', 1, fluid))
+            x = (pressures[ind] - CP.PropsSI('P', 'T', temperatures[ind], 'Q', 1, refrigerant)) / \
+            (CP.PropsSI('P', 'T', temperatures[ind], 'Q', 0, refrigerant) - 
+             CP.PropsSI('P', 'T', temperatures[ind], 'Q', 1, refrigerant))
 
-            cycleEnthalpy[ind] = CP.PropsSI('H', 'P', pressures[ind], 'Q', x, fluid)
-            cycleEntropy[ind] = CP.PropsSI('S', 'P', pressures[ind], 'Q', x, fluid)
+            cycleEnthalpy[ind] = CP.PropsSI('H', 'P', pressures[ind], 'Q', x, refrigerant)
+            cycleEntropy[ind] = CP.PropsSI('S', 'P', pressures[ind], 'Q', x, refrigerant)
     
     
     # Model pod as rectangular prism
@@ -266,7 +265,7 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     H = W
     
     # Thickness of plywood (m) [13/16"]
-    t = 13/16 * 0.0254
+    t = 13 / 16 * 0.0254
     
     # thermal conductivity of plywood (W/mk)
     k_ply = 0.13
@@ -278,25 +277,25 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     delta_T = np.abs(radialProfile[2] + 273.15 - T_amb)
     
     # Thermal conductivity (W/m K)
-    k  = CP.PropsSI('L', 'T', T_f, 'P', P_amb, 'Air.mix')
+    k  = CP.PropsSI('L', 'T', T_f, 'P', P_amb, 'air')
     
     # isobaric Specific Heat of air (j/kg/k)
-    C_p = CP.PropsSI('C', 'T', T_f, 'P', P_amb, 'Air.mix')
+    C_p = CP.PropsSI('C', 'T', T_f, 'P', P_amb, 'air')
     
     # absolute viscosity of air (Pa*s)
-    mu = CP.PropsSI('V', 'T', T_f, 'P', P_amb, 'Air.mix')
+    mu = CP.PropsSI('V', 'T', T_f, 'P', P_amb, 'air')
     
     # Density of air (kg/m^3) 
-    rho = CP.PropsSI('D', 'T', T_f, 'P', P_amb, 'Air.mix')
+    rho = CP.PropsSI('D', 'T', T_f, 'P', P_amb, 'Air')
     
     # Kinematic Viscosity (m^2/s)
     nu = mu / rho
     
     # Prandtl number of air
-    Pr = CP.PropsSI('Prandtl', 'T', T_f, 'P', P_amb, 'Air.mix')
+    Pr = CP.PropsSI('Prandtl', 'T', T_f, 'P', P_amb, 'Air')
     
     # Isobaric expansion coefficient (1/K)
-    beta = CP.PropsSI('isobaric_expansion_coefficient', 'T', T_f, 'P', P_amb, 'Air.mix')
+    beta = CP.PropsSI('isobaric_expansion_coefficient', 'T', T_f, 'P', P_amb, 'Air')
     
     # gravity (m/s^2)
     g = 9.81
@@ -314,6 +313,8 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     Ra_b = g * beta * delta_T * (W / 2)**3 / nu / alpha
     
     
+    
+    # Compute Nusselt number
     if Ra_s < 1e9:
         Nu_s = (0.68 + 0.67 * Ra_s**(1/4) / (1 + (0.492 / Pr)**(9/16))**(4/9))
     else:
@@ -337,12 +338,11 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     h_t =  Nu_t * k / (W / 2)
     h_b =  Nu_b * k / (W / 2)
     
-    # Ambient heat load per meter (W/m)
-    q_prime = (T_mean_pod + 273.15 - T_amb) * (2 * H / (t / k_ply + 1 / h_s) + 
-                                                     W / (t / k_ply + 1 / h_t) +
-                                                     W / (t / k_ply + 1 / h_b))
     # Ambient heat load (W)
-    Q_ambient = q_prime * L
+    Q_ambient = (radialProfile[2] + 273.15 - T_amb) * (2 * H * L / (t / k_ply + 1 / h_s) + # Sides
+                                                       2 * H * W / (t / k_ply + 1 / h_s) + # front and back
+                                                       W * L / (t / k_ply + 1 / h_t) + # top
+                                                       W * L / (t / k_ply + 1 / h_b)) # bottom
     
     # Compute VCRC heat load 
     load = (Q_element - Q_ambient)
@@ -390,15 +390,15 @@ def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod
     if len(args) == 2:
         exp = args[0] 
         model = args[1]
-        fluid = 'R410a'
+        refrigerant = 'R410a'
         # Create Vapor Dome
-        vaporDomeS = np.concatenate([CP.PropsSI('S', 'T', np.linspace(200, 344, 150), 'Q', 0, fluid),
-                                     CP.PropsSI('S', 'T', np.linspace(344, 200, 150), 'Q', 1, fluid)])
+        vaporDomeS = np.concatenate([CP.PropsSI('S', 'T', np.linspace(200, 344, 150), 'Q', 0, refrigerant),
+                                     CP.PropsSI('S', 'T', np.linspace(344, 200, 150), 'Q', 1, refrigerant)])
         vaporDomeT = np.concatenate(
             [np.linspace(200, 344, 150), np.linspace(344, 200, 150)])
 
-        vaporDomeH = np.concatenate([CP.PropsSI('H', 'P', np.linspace(2e5, 5000e3, 150), 'Q', 0, fluid),
-                                     CP.PropsSI('H', 'P', np.linspace(5000e3, 2e5, 150), 'Q', 1, fluid)])
+        vaporDomeH = np.concatenate([CP.PropsSI('H', 'P', np.linspace(2e5, 5000e3, 150), 'Q', 0, refrigerant),
+                                     CP.PropsSI('H', 'P', np.linspace(5000e3, 2e5, 150), 'Q', 1, refrigerant)])
         vaporDomeP = np.concatenate(
             [np.linspace(2e5, 5000e3, 150), np.linspace(5000e3, 2e5, 150)])
 
@@ -437,15 +437,15 @@ def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod
         
     if len(args) == 1:
         exp = args[0] 
-        fluid = 'R410a'
+        refrigerant = 'R410a'
         # Create Vapor Dome
-        vaporDomeS = np.concatenate([CP.PropsSI('S', 'T', np.linspace(200, 344, 150), 'Q', 0, fluid),
-                                     CP.PropsSI('S', 'T', np.linspace(344, 200, 150), 'Q', 1, fluid)])
+        vaporDomeS = np.concatenate([CP.PropsSI('S', 'T', np.linspace(200, 344, 150), 'Q', 0, refrigerant),
+                                     CP.PropsSI('S', 'T', np.linspace(344, 200, 150), 'Q', 1, refrigerant)])
         vaporDomeT = np.concatenate(
             [np.linspace(200, 344, 150), np.linspace(344, 200, 150)])
 
-        vaporDomeH = np.concatenate([CP.PropsSI('H', 'P', np.linspace(2e5, 5000e3, 150), 'Q', 0, fluid),
-                                     CP.PropsSI('H', 'P', np.linspace(5000e3, 2e5, 150), 'Q', 1, fluid)])
+        vaporDomeH = np.concatenate([CP.PropsSI('H', 'P', np.linspace(2e5, 5000e3, 150), 'Q', 0, refrigerant),
+                                     CP.PropsSI('H', 'P', np.linspace(5000e3, 2e5, 150), 'Q', 1, refrigerant)])
         vaporDomeP = np.concatenate(
             [np.linspace(2e5, 5000e3, 150), np.linspace(5000e3, 2e5, 150)])
 
@@ -492,19 +492,19 @@ def thermodynamic_plots(*args, lgnd = ['Vapor Dome', 'Ambient Temperature', 'Pod
 def example_plots():
     # A function which plots example T-s and P-h diagrams of a VCRC with and without losses.
     
-    fluid = 'R410a' 
+    refrigerant = 'R410a' 
     
     P_e = 1e6
     P_c = 3.5e6
 
     # Create Vapor Dome
-    vaporDomeS = np.concatenate([CP.PropsSI('S', 'T', np.linspace(200, 344, 150), 'Q', 0, fluid),
-                                 CP.PropsSI('S', 'T', np.linspace(344, 200, 150), 'Q', 1, fluid)])
+    vaporDomeS = np.concatenate([CP.PropsSI('S', 'T', np.linspace(200, 344, 150), 'Q', 0, refrigerant),
+                                 CP.PropsSI('S', 'T', np.linspace(344, 200, 150), 'Q', 1, refrigerant)])
     vaporDomeT = np.concatenate(
         [np.linspace(200, 344, 150), np.linspace(344, 200, 150)])
 
-    vaporDomeH = np.concatenate([CP.PropsSI('H', 'P', np.linspace(2e5, 5000e3, 150), 'Q', 0, fluid),
-                                 CP.PropsSI('H', 'P', np.linspace(5000e3, 2e5, 150), 'Q', 1, fluid)])
+    vaporDomeH = np.concatenate([CP.PropsSI('H', 'P', np.linspace(2e5, 5000e3, 150), 'Q', 0, refrigerant),
+                                 CP.PropsSI('H', 'P', np.linspace(5000e3, 2e5, 150), 'Q', 1, refrigerant)])
     vaporDomeP = np.concatenate(
         [np.linspace(2e5, 5000e3, 150), np.linspace(5000e3, 2e5, 150)])
 
@@ -515,49 +515,49 @@ def example_plots():
 
 
     # Starting temperature with 15 degree super heat
-    idealTemperature = np.array(CP.PropsSI('T', 'P', idealPressure[0], 'Q', 1, fluid) + 15)
+    idealTemperature = np.array(CP.PropsSI('T', 'P', idealPressure[0], 'Q', 1, refrigerant) + 15)
 
     # Look up entropy
-    idealEntropy = np.array(CP.PropsSI('S', 'P', idealPressure[0], 'T', idealTemperature.flat[0], fluid))
+    idealEntropy = np.array(CP.PropsSI('S', 'P', idealPressure[0], 'T', idealTemperature.flat[0], refrigerant))
 
     # Look up enthalpy
-    idealEnthalpy = np.array(CP.PropsSI('H', 'P', idealPressure[0], 'T', idealTemperature.flat[0], fluid))
+    idealEnthalpy = np.array(CP.PropsSI('H', 'P', idealPressure[0], 'T', idealTemperature.flat[0], refrigerant))
 
     # Isentropic Compression
     idealEntropy = np.append(idealEntropy, idealEntropy.flat[0])
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[1], 'S', idealEntropy[1], fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[1], 'S', idealEntropy[1], fluid))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[1], 'S', idealEntropy[1], refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[1], 'S', idealEntropy[1], refrigerant))
 
     # Isobaric super heat
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[2], 'Q', 1, fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[2], 'Q', 1, fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[2], 'Q', 1, fluid))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[2], 'Q', 1, refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[2], 'Q', 1, refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[2], 'Q', 1, refrigerant))
 
     # Isobaric phase change
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[3], 'Q', 0, fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[3], 'Q', 0, fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[3], 'Q', 0, fluid))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[3], 'Q', 0, refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[3], 'Q', 0, refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[3], 'Q', 0, refrigerant))
 
     # 10 degree subcool
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[4], 'Q', 0, fluid) -  10)
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[4], 'T', idealTemperature[4], fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[4], 'T', idealTemperature[4], fluid))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[4], 'Q', 0, refrigerant) -  10)
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[4], 'T', idealTemperature[4], refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[4], 'T', idealTemperature[4], refrigerant))
 
     # Isenthalpic expansion
     idealEnthalpy = np.append(idealEnthalpy, idealEnthalpy[4])
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[5], 'H', idealEnthalpy[5], fluid))
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[5], 'H', idealEnthalpy[5], fluid))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[5], 'H', idealEnthalpy[5], refrigerant))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[5], 'H', idealEnthalpy[5], refrigerant))
 
 
     # Isobaric phase change
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[6], 'Q', 1, fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[6], 'Q', 1, fluid))
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[6], 'Q', 1, fluid))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[6], 'Q', 1, refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[6], 'Q', 1, refrigerant))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[6], 'Q', 1, refrigerant))
 
     # Isobaric superheat 
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[7], 'T', idealTemperature[0], fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[7], 'T', idealTemperature[0], fluid))
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[7], 'T', idealTemperature[0], fluid))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[7], 'T', idealTemperature[0], refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[7], 'T', idealTemperature[0], refrigerant))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[7], 'T', idealTemperature[0], refrigerant))
 
 
     ########################### REAL Cycle ###########################
@@ -570,56 +570,56 @@ def example_plots():
 
 
     # Starting temperature with 15 degree super heat
-    actualTemperature = np.array(CP.PropsSI('T', 'P', actualPressure[0], 'Q', 1, fluid) + 15)
+    actualTemperature = np.array(CP.PropsSI('T', 'P', actualPressure[0], 'Q', 1, refrigerant) + 15)
 
     # Look up entropy
-    actualEntropy = np.array(CP.PropsSI('S', 'P', actualPressure[0], 'T', actualTemperature.flat[0], fluid))
+    actualEntropy = np.array(CP.PropsSI('S', 'P', actualPressure[0], 'T', actualTemperature.flat[0], refrigerant))
 
     # Look up enthalpy
-    actualEnthalpy = np.array(CP.PropsSI('H', 'P', actualPressure[0], 'T', actualTemperature.flat[0], fluid))
+    actualEnthalpy = np.array(CP.PropsSI('H', 'P', actualPressure[0], 'T', actualTemperature.flat[0], refrigerant))
 
     # Compression with 50% superheat entropy loss
     actualEntropy = np.append(actualEntropy, actualEntropy.flat[0] - 0.5 * (actualEntropy.flat[0] - 
-                                                                            CP.PropsSI('S', 'P', actualPressure[1], 'Q', 1, fluid)))
-    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[1], 'S', actualEntropy[1], fluid))
-    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[1], 'S', actualEntropy[1], fluid))
+                                                                            CP.PropsSI('S', 'P', actualPressure[1], 'Q', 1, refrigerant)))
+    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[1], 'S', actualEntropy[1], refrigerant))
+    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[1], 'S', actualEntropy[1], refrigerant))
 
     # super heat
     actualPressure = np.append(actualPressure, actualPressure[1] - 0.25 * P_drop)
-    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[2], 'Q', 1, fluid))
-    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[2], 'Q', 1, fluid))
-    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[2], 'Q', 1, fluid))
+    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[2], 'Q', 1, refrigerant))
+    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[2], 'Q', 1, refrigerant))
+    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[2], 'Q', 1, refrigerant))
 
     # phase change
     actualPressure = np.append(actualPressure, actualPressure[1] - 0.5 * P_drop)
-    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[3], 'Q', 0, fluid))
-    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[3], 'Q', 0, fluid))
-    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[3], 'Q', 0, fluid))
+    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[3], 'Q', 0, refrigerant))
+    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[3], 'Q', 0, refrigerant))
+    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[3], 'Q', 0, refrigerant))
 
     # 10 degree subcool
     actualPressure = np.append(actualPressure, actualPressure[1] - 1e5)
-    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[4], 'Q', 0, fluid) -  10)
-    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[4], 'T', actualTemperature[4], fluid))
-    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[4], 'T', actualTemperature[4], fluid))
+    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[4], 'Q', 0, refrigerant) -  10)
+    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[4], 'T', actualTemperature[4], refrigerant))
+    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[4], 'T', actualTemperature[4], refrigerant))
 
     # Isenenthalpic expansion
     actualPressure = np.append(actualPressure, actualPressure[0] + P_drop)
     actualEnthalpy = np.append(actualEnthalpy, 1 * actualEnthalpy[4])
-    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[5], 'H', actualEnthalpy[5], fluid))
-    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[5], 'H', actualEnthalpy[5], fluid))
+    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[5], 'H', actualEnthalpy[5], refrigerant))
+    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[5], 'H', actualEnthalpy[5], refrigerant))
 
 
     # phase change
     actualPressure = np.append(actualPressure, actualPressure[0] + 0.25 * P_drop)
-    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[6], 'Q', 1, fluid))
-    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[6], 'Q', 1, fluid))
-    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[6], 'Q', 1, fluid))
+    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[6], 'Q', 1, refrigerant))
+    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[6], 'Q', 1, refrigerant))
+    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[6], 'Q', 1, refrigerant))
 
     # superheat 
     actualPressure = np.append(actualPressure, actualPressure[0])
-    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[7], 'T', actualTemperature[0], fluid))
-    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[7], 'T', actualTemperature[0], fluid))
-    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[7], 'T', actualTemperature[0], fluid))
+    actualEnthalpy = np.append(actualEnthalpy, CP.PropsSI('H', 'P', actualPressure[7], 'T', actualTemperature[0], refrigerant))
+    actualTemperature = np.append(actualTemperature, CP.PropsSI('T', 'P', actualPressure[7], 'T', actualTemperature[0], refrigerant))
+    actualEntropy = np.append(actualEntropy, CP.PropsSI('S', 'P', actualPressure[7], 'T', actualTemperature[0], refrigerant))
 
     insideTemp = 300
     outsideTemp = 310
@@ -677,7 +677,7 @@ def example_plots():
 def ideal_cycle(P_c, P_e, T_SC, T_SH):
     # A function which plots example T-s and P-h diagrams of a VCRC with and without losses.
     
-    fluid = 'R410a' 
+    refrigerant = 'R410a' 
 
     # Starting evaporation and condensing pressures
     idealPressure = np.array(P_e)
@@ -689,46 +689,46 @@ def ideal_cycle(P_c, P_e, T_SC, T_SH):
     idealTemperature = np.array(T_SH)
 
     # Look up entropy
-    idealEntropy = np.array(CP.PropsSI('S', 'P', idealPressure[0], 'T', idealTemperature.flat[0], fluid))
+    idealEntropy = np.array(CP.PropsSI('S', 'P', idealPressure[0], 'T', idealTemperature.flat[0], refrigerant))
 
     # Look up enthalpy
-    idealEnthalpy = np.array(CP.PropsSI('H', 'P', idealPressure[0], 'T', idealTemperature.flat[0], fluid))
+    idealEnthalpy = np.array(CP.PropsSI('H', 'P', idealPressure[0], 'T', idealTemperature.flat[0], refrigerant))
 
     # Isentropic Compression
     idealEntropy = np.append(idealEntropy, idealEntropy.flat[0])
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[1], 'S', idealEntropy[1], fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[1], 'S', idealEntropy[1], fluid))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[1], 'S', idealEntropy[1], refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[1], 'S', idealEntropy[1], refrigerant))
 
     # Isobaric super heat
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[2], 'Q', 1, fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[2], 'Q', 1, fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[2], 'Q', 1, fluid))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[2], 'Q', 1, refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[2], 'Q', 1, refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[2], 'Q', 1, refrigerant))
 
     # Isobaric phase change
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[3], 'Q', 0, fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[3], 'Q', 0, fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[3], 'Q', 0, fluid))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[3], 'Q', 0, refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[3], 'Q', 0, refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[3], 'Q', 0, refrigerant))
 
     # 10 degree subcool
     idealTemperature = np.append(idealTemperature, T_SC)
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[4], 'T', idealTemperature[4], fluid))
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[4], 'T', idealTemperature[4], fluid))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[4], 'T', idealTemperature[4], refrigerant))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[4], 'T', idealTemperature[4], refrigerant))
 
     # Isenthalpic expansion
     idealEnthalpy = np.append(idealEnthalpy, idealEnthalpy[4])
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[5], 'H', idealEnthalpy[5], fluid))
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[5], 'H', idealEnthalpy[5], fluid))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[5], 'H', idealEnthalpy[5], refrigerant))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[5], 'H', idealEnthalpy[5], refrigerant))
 
 
     # Isobaric phase change
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[6], 'Q', 1, fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[6], 'Q', 1, fluid))
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[6], 'Q', 1, fluid))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[6], 'Q', 1, refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[6], 'Q', 1, refrigerant))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[6], 'Q', 1, refrigerant))
 
     # Isobaric superheat 
-    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[7], 'T', idealTemperature[0], fluid))
-    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[7], 'T', idealTemperature[0], fluid))
-    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[7], 'T', idealTemperature[0], fluid))
+    idealEnthalpy = np.append(idealEnthalpy, CP.PropsSI('H', 'P', idealPressure[7], 'T', idealTemperature[0], refrigerant))
+    idealTemperature = np.append(idealTemperature, CP.PropsSI('T', 'P', idealPressure[7], 'T', idealTemperature[0], refrigerant))
+    idealEntropy = np.append(idealEntropy, CP.PropsSI('S', 'P', idealPressure[7], 'T', idealTemperature[0], refrigerant))
 
     # Creae pandas dataframe for 
     idealData = pd.DataFrame({ 'P (Pa)': [idealPressure], 'T (K)': [idealTemperature], 'h (j/kg)':[idealEnthalpy], 
