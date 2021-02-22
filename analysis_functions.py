@@ -227,7 +227,7 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     # http://www.burnsengineering.com/local/uploads/files/small_diameter_lines.pdf
     temperatures[0:3] = temperatures[0:3] + 0.02 * (temperatures[0:3] - T_amb)
 
-    temperatures[3] = temperatures[3] + 0.02 * (temperatures[3] - T_mean_pod-273.15)
+    temperatures[3] = temperatures[3] + 0.02 * (temperatures[3] - T_mean_pod - 273.15)
     
     # Look up saturated enthalpy and entropy
     refrigerant = 'R410a'
@@ -255,17 +255,17 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     # Fundamentals of Heat and Mass Transfer (6th ed.). 
     # Hoboken: Wiley. pp. 578, ISBN 978-0-471-45728-2.
     
-    # Length of prototype (m) [76.5"]
-    L = 76.5 * 0.0254
+    # Length of prototype (m) [86.5"]
+    L = 86.5 * 0.0254
     
-    # width of prototype (m) [15 13/16"]
-    W = (15 + 13/16) * 0.0254
+    # width of prototype (m) [20"]
+    W = (20) * 0.0254
     
-    # Height of prototype body (m) [15 13/16"]
+    # Height of prototype body (m) [20"]
     H = W
     
-    # Thickness of plywood (m) [13/16"]
-    t = 13 / 16 * 0.0254
+    # Thickness of plywood (m) [0.5"]
+    t = 0.5 / 16 * 0.0254
     
     # thermal conductivity of plywood (W/mk)
     k_ply = 0.13
@@ -302,6 +302,29 @@ def experimental_analysis_fan(file, P_amb, Q_element, W_refrig):
     
     # Thermal diffusivity (m^2/s)
     alpha = k / rho / C_p
+    
+    # Modeled as Cylinder
+#     # Inner Radius
+#     r_i = 7.25 * 0.0254
+    
+#     # Outer Radius
+#     r_o = (r_i + t) * 0.0254
+    
+#     Ra = g * beta * delta_T * (2 * r_o)**3 / nu / alpha
+    
+#     # Compute Nusselt number
+#     if Ra < 1e11:
+#         Nu = (0.60 + 0.387 * Ra**(1/6) / (1 + (0.559 / Pr)**(9/16))**(8/27))**2
+#     else:
+#         raise ValueError('Ra sides is not within range ' + str(Ra))
+        
+#     # Compute Convection Coef.
+#     h = Nu * k / (2 * r_o)
+    
+#     # Ambient heat load (W)
+#     Q_ambient = (radialProfile[2] + 273.15 - T_amb) / (1 / ((2 * r_o) * np.pi * L * h) + 
+#                                                            np.log(r_o / r_i) / (2 * k_ply * np.pi * L))
+    
     
     # Raleigh Number sides
     Ra_s = g * beta * delta_T * (H)**3 / nu / alpha

@@ -4,7 +4,7 @@ import CoolProp.CoolProp as CP
 from scipy.optimize import fsolve
 
 
-def compr_func( inlet_state, RPM, P_ratio, refrigerant = 'R410a'):
+def compr_func( inlet_state, RPM, P_ratio, fluid = 'R410a'):
     
 
     P_e   = inlet_state[0] # Pa
@@ -12,17 +12,17 @@ def compr_func( inlet_state, RPM, P_ratio, refrigerant = 'R410a'):
         
 
     #Param
-    eta_v = 4 * (1 - P_ratio / 3) # Volumetric efficiency
+    eta_v = 4 * (1 -  P_ratio / 3) # Volumetric efficiency
     Disp = 5.25E-6    # [m^3 per rev] #volume displacement
     
     if eta_v < 0:
         raise ValueError('Compression ratio too high: ' + str(P_ratio))
 
-    h_g   = CP.PropsSI('H', 'P', P_e, 'Q', 1, refrigerant)
+    h_g   = CP.PropsSI('H', 'P', P_e, 'Q', 1, fluid)
     if h_e_o < h_g:
         warnings.warn('Flooded Compressor, vapor quality < 1')
     
-    rho = CP.PropsSI('D', 'P', P_e, 'H' ,h_e_o, refrigerant)
+    rho = CP.PropsSI('D', 'P', P_e, 'H' ,h_e_o, fluid)
 
     m_dot = RPM / 60 * Disp * eta_v * rho
     
@@ -111,7 +111,7 @@ def generate_HTCOEFF(P, m_dot_i, subsys, T_o, RPM, x_in, refrigerant = 'R410a'):
             [V_dot_o, W_fan] = HT_900(RPM, dP)
             
             # Shroud efficiency
-            eta_shroud = 0.08
+            eta_shroud = 0.07
             
             V_dot_o = V_dot_o * eta_shroud
 
@@ -391,7 +391,7 @@ def generate_HTCOEFF(P, m_dot_i, subsys, T_o, RPM, x_in, refrigerant = 'R410a'):
             [V_dot_o, W_fan] = blower(RPM, guess)
             
             # Shroud efficiency
-            eta_shroud = 0.35
+            eta_shroud = 0.4
             
             V_dot_o = V_dot_o * eta_shroud
             
@@ -853,7 +853,7 @@ def valve_func( CA_param, P_up, P_down, x):
     return  m_dot
 
 
-def capillary_tube_func(P_in, h_in, T_in, refrigerant = 'R410a'):
+def capillary_tube_func(P_in, h_in, T_in, fluid = 'R410a'):
 
     # Mass flow rate correlation for helically coiled capillary tubes Rasti et al.
   
@@ -861,41 +861,41 @@ def capillary_tube_func(P_in, h_in, T_in, refrigerant = 'R410a'):
     d_coil = 2 * 0.0254
     
     # 1/16" in OD copper tubing, .02" wall thickness
-    D_c = 0.023 * 0.0254
+    D_c = 0.024 * 0.0254
     
     # length of capillary tube. 4 loops
     L_c = d_coil * np.pi  * 4
 
     # Saturation Pressure
-    P_sat = CP.PropsSI('P', 'T', T_in, 'Q', 0, refrigerant)
+    P_sat = CP.PropsSI('P', 'T', T_in, 'Q', 0, fluid)
 
-    # Dynamic viscosity of r-410a refrigerant at inlet temperature
-    mu_f = CP.PropsSI('V', 'T', T_in, 'Q', 0, refrigerant)
+    # Dynamic viscosity of r-410a fluid at inlet temperature
+    mu_f = CP.PropsSI('V', 'T', T_in, 'Q', 0, fluid)
 
     # Dynamic viscosity of r-410a vapor at inlet temperature
-    mu_g = CP.PropsSI('V', 'T', T_in, 'Q', 1, refrigerant)
+    mu_g = CP.PropsSI('V', 'T', T_in, 'Q', 1, fluid)
 
-    # Density of r-410a refrigerant at inlet temperature
-    rho_f = CP.PropsSI('D', 'T', T_in, 'Q', 0, refrigerant)
+    # Density of r-410a fluid at inlet temperature
+    rho_f = CP.PropsSI('D', 'T', T_in, 'Q', 0, fluid)
 
     # Density of r-410a vapor at inlet temperature
-    rho_g = CP.PropsSI('D', 'T', T_in, 'Q', 1, refrigerant)
+    rho_g = CP.PropsSI('D', 'T', T_in, 'Q', 1, fluid)
 
-    # Specific volume of r-410a refrigerant at inlet temperature
+    # Specific volume of r-410a fluid at inlet temperature
     v_f = 1 / rho_f
 
     # Specific volume of r-410a vapor at inlet temperature
     v_g = 1 / rho_g
 
     # Saturated liquid surface tension of r-410a vapor at inlet temperature
-    sigma = CP.PropsSI('I', 'T', T_in, 'Q', 0, refrigerant)
+    sigma = CP.PropsSI('I', 'T', T_in, 'Q', 0, fluid)
 
-    # Enthalpy of refrigerant at inlet pressure
-    h_f = CP.PropsSI('H', 'P', P_in, 'Q', 0, refrigerant)
+    # Enthalpy of fluid at inlet pressure
+    h_f = CP.PropsSI('H', 'P', P_in, 'Q', 0, fluid)
 
     # Enthalpy of vaporization at inlet pressure
-    h_fg = (CP.PropsSI('H', 'P', P_in, 'Q', 1, refrigerant) - 
-            CP.PropsSI('H', 'P', P_in, 'Q', 0, refrigerant))
+    h_fg = (CP.PropsSI('H', 'P', P_in, 'Q', 1, fluid) - 
+            CP.PropsSI('H', 'P', P_in, 'Q', 0, fluid))
 
     # A generalized continuous empirical correlation for predicting refrigerant
     # mass flow rates through adiabatic capillary tubes

@@ -5,7 +5,7 @@ from scipy.optimize import minimize, Bounds, NonlinearConstraint, LinearConstrai
 import warnings
 import pandas as pd
 
-def make_cycle(Vars, Inputs, Param):
+def make_cycle(Vars, Inputs, Param, refrigerant = 'R410a'):
 
     # ----------------------------------------------#
     # ==------ Vars  -------==#
@@ -42,9 +42,6 @@ def make_cycle(Vars, Inputs, Param):
     #=========================================================================#
     # Calculate
     #=========================================================================#
-    
-    # refrigerant used in VCRC
-    refrigerant = 'R410a'
 
     # pressure drop accross evaporator (Pa)
     delta_P_e = 0
@@ -96,17 +93,17 @@ def make_cycle(Vars, Inputs, Param):
     
 
     #   calculate evap
-    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9], W_fan_e] = Evap_Proc(STATE, m_dot_s, T_pod, delta_P_e, RPM_evap, refrigerant)
+    [P[5:9], T[5:9], h[5:9], s[5:9], abscissa[5:9], W_fan_e] = Evap_Proc(STATE, m_dot_v, T_pod, delta_P_e, RPM_evap, refrigerant)
 
     abscissa[5:9] = abscissa[5:9] + abscissa[4]
 
     # Energy and Mass Deficits
-    Q_L = m_dot_s * (h[8] - h[5])
+    Q_L = m_dot_v * (h[8] - h[5])
     Q_H = m_dot_s * (h[1] - h[4])
 
     m_def  =  (m_dot_s - m_dot_v) / m_dot_s  #Mass Deficit
-    h_def  =  (Q_H  - Q_L) / Q_L   #evap deficit
-    Q_def  =  (Q_evap  - Q_load) / Q_load   #Pod energy deficit
+    h_def  =  10 * (h[0]  - h[8]) / h[0]   # evap deficit
+    Q_def  =  (Q_L  - Q_load) / Q_load   #Pod energy deficit
 
     Deficit = np.array([m_def, h_def, Q_def])
 
@@ -132,15 +129,12 @@ def make_cycle(Vars, Inputs, Param):
     return [P, T, h, s, abscissa, m_dot, Q_L, Q_H, W_comp, W_fan_c, W_fan_e, COSP, Deficit]
 
 
-def adjust_cycle_fmin(Vars, Inputs, Param):
+def adjust_cycle_fmin(Vars, Inputs, Param, refrigerant = 'R410a'):
 
     assert(np.size(Vars) == 3)
 
     T_amb  = Inputs[0]
     T_pod  = Inputs[1]
-    
-    # refrigerant used in VCRC
-    refrigerant = 'R410a'
 
     #
     #
@@ -163,7 +157,7 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
 
     nonLinear = NonlinearConstraint(nonlcon, 0, np.inf)
     
-    linear = LinearConstraint(A =np.concatenate((np.identity(3), np.array([[1, -3.2, 0]])), axis=0),
+    linear = LinearConstraint(A =np.concatenate((np.identity(3), np.array([[1, -3, 0]])), axis=0),
                               lb = [CP.PropsSI('P', 'T', T_amb, 'Q', 1, refrigerant), 200e3, 0.1, -np.inf], # Lower Bounds
                               ub = [5000e3, CP.PropsSI('P', 'T', T_pod, 'Q', 0, refrigerant), 30, 0] # Upper Bounds
                              )
@@ -188,28 +182,29 @@ def adjust_cycle_fmin(Vars, Inputs, Param):
     return [Vars, Deficit]
 
 
-def solve_cycle_shotgun(Inputs, Param):
+def solve_cycle_shotgun(Inputs, Param, refrigerant = 'R410a'):
     
     T_amb  = Inputs[0] # K
     T_pod  = Inputs[1] # K
-    
-    # refrigerant used in VCRC
-    refrigerant = 'R410a'
     
     SPREAD = 4;
 
     # evaporator bounds
     lb = [200e3, CP.PropsSI('P', 'T', T_amb, 'Q', 1, refrigerant)] # lower bound for evap and cond Pressures
     ub = [CP.PropsSI('P', 'T', T_pod, 'Q', 0, refrigerant), 3] # upper bound for evap and compression ratio bound for cond
-
-    #Starting points
-    P_e   = lb[0] + (ub[0] - lb[0]) * np.linspace( 0.1, 0.9, SPREAD)
-    P_c   = P_e + (P_e * ub[1] - lb[1]) * np.linspace( 0.1, 0.9, SPREAD)
     
+    # Initial guess for superheat
     T_SH  = 0.5
+    
+    # Intialize Vars
+    Vars = np.empty((0,3))
+    
+    # Create list of Initial points in feasible region
+    P_e   = lb[0] + (ub[0] - lb[0]) * np.linspace( 0.1, 0.9, SPREAD)
+    for P in P_e:
+        P_c = P + (P * ub[1] - lb[1]) * np.linspace( 0.1, 0.9, SPREAD)
+        Vars = np.concatenate([Vars, np.array(np.meshgrid(P_c, P, T_SH)).T.reshape(-1,3)])
 
-    # Create list of possible combinations of pressures
-    Vars = np.array(np.meshgrid(P_c, P_e, T_SH)).T.reshape(-1, 3)
 
     #Initialize Vars and Deficits
     normDeficit = np.zeros(len(Vars))
@@ -236,6 +231,6 @@ def solve_cycle_shotgun(Inputs, Param):
     [P, T, h, s, abscissa, m_dot, Q_L, Q_H, W_comp, W_fan_c, W_fan_e, COSP, Deficit] = make_cycle(Vars, 
                                                                                              Inputs,
                                                                                              Param)
-    Props = [P, T, h, s, abcissa]
+    Props = [P, T, h, s, abscissa]
         
     return [Props, m_dot, Q_L, Q_H, W_comp, W_fan_c, W_fan_e, COSP, Deficit, converged]
