@@ -111,7 +111,7 @@ def generate_HTCOEFF(P, m_dot_i, subsys, T_o, RPM, x_in, refrigerant = 'R410a'):
             [V_dot_o, W_fan] = HT_900(RPM, dP)
             
             # Shroud efficiency
-            eta_shroud = 0.07
+            eta_shroud = 0.075
             
             V_dot_o = V_dot_o * eta_shroud
 
@@ -391,7 +391,7 @@ def generate_HTCOEFF(P, m_dot_i, subsys, T_o, RPM, x_in, refrigerant = 'R410a'):
             [V_dot_o, W_fan] = blower(RPM, guess)
             
             # Shroud efficiency
-            eta_shroud = 0.4
+            eta_shroud = 0.35
             
             V_dot_o = V_dot_o * eta_shroud
             
@@ -861,7 +861,7 @@ def capillary_tube_func(P_in, h_in, T_in, fluid = 'R410a'):
     d_coil = 2 * 0.0254
     
     # 1/16" in OD copper tubing, .02" wall thickness
-    D_c = 0.024 * 0.0254
+    D_c = 0.022 * 0.0254
     
     # length of capillary tube. 4 loops
     L_c = d_coil * np.pi  * 4

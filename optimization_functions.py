@@ -111,7 +111,7 @@ def make_cycle(Vars, Inputs, Param, refrigerant = 'R410a'):
     m_dot = [m_dot_s, m_dot_v]
     
     # Combined efficiency (Regression determined empirically)
-    eta_comb = 1 / (P_c / P_e * 43.96548922 - 104.36634403)
+    eta_comb = 1 / (P_c / P_e * 59.84697757 - 150.16285207)
     
     #     P_ratio = []
     #     for index, row in modelData.iterrows():
